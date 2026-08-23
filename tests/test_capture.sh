@@ -101,4 +101,33 @@ run 0 --help
 grep -q -- '--allow-file' "$test_root/stdout" && grep -q -- '--no-aria-snapshot' "$test_root/stdout" || fail "help incomplete"
 check "help documents all flags"
 
+# 10. --spec records the acceptance spec hash; attest/check fail closed until every PNG is attested.
+printf 'Header must be 64px tall and use the brand blue.\n' > "$test_root/spec.md"
+run 0 "$fx/clean.html" --allow-file --spec "$test_root/spec.md" --tabs 'Overview,Details' --viewports 'test=800x600' \
+  --screenshot-mode viewport --out-dir "$test_root/attest"
+receipt "$test_root/attest/receipt.json" '
+import hashlib
+assert receipt["spec"]["sha256"] == hashlib.sha256(open(receipt["spec"]["path"],"rb").read()).hexdigest()'
+run 3 check "$test_root/attest/receipt.json"
+grep -q 'UNINSPECTED' "$test_root/stderr" || fail "expected UNINSPECTED"
+run 64 attest "$test_root/attest/receipt.json" --path test--overview--viewport.png --verdict pass --note short
+run 64 attest "$test_root/attest/receipt.json" --path nope.png --verdict pass --note 'this screenshot does not exist'
+run 64 attest "$test_root/attest/receipt.json" --path test--overview--viewport.png --verdict maybe --note 'bad verdict value here'
+run 0 attest "$test_root/attest/receipt.json" --path test--overview--viewport.png --verdict pass --note 'Header 64px, brand blue, matches spec' --by tester
+run 3 check "$test_root/attest/receipt.json"
+run 0 attest "$test_root/attest/receipt.json" --path test--details--viewport.png --verdict caveat --note 'Details card border slightly lighter than spec'
+run 0 check "$test_root/attest/receipt.json"
+grep -q 'OK with caveats' "$test_root/stdout" || fail "expected caveat summary"
+grep -q 'sha256:' "$test_root/stdout" || fail "expected spec hash in check output"
+run 0 attest "$test_root/attest/receipt.json" --path test--details--viewport.png --verdict fail --note 'On second look the card is clipped'
+run 4 check "$test_root/attest/receipt.json"
+receipt "$test_root/attest/receipt.json" 'assert len(receipt["inspections"]) == 3, "attestations must be append-only"'
+check "spec hash recorded; check fails closed until attested; fail verdict rejects"
+
+# 11. check on a receipt with structural findings fails even if attested.
+run 2 "$fx/broken.html" --allow-file --viewports 'test=800x600' --screenshot-mode viewport --out-dir "$test_root/checkbroken"
+run 0 attest "$test_root/checkbroken/receipt.json" --path test--page--viewport.png --verdict pass --note 'looks fine to me honestly'
+run 2 check "$test_root/checkbroken/receipt.json"
+check "structural findings cannot be attested away"
+
 echo "agent-verification: $pass checks passed"

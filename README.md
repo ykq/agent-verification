@@ -2,7 +2,13 @@
 
 An [Agent Skill](https://agentskills.io) that makes coding agents prove visual and data claims with inspectable evidence before reporting them done.
 
-Most "evidence before claims" skills are prose. This one ships a collector: one command renders a page across viewports and tab states, writes screenshots, accessibility snapshots, browser diagnostics, machine-detected structural findings, and a JSON receipt whose status says `capture_complete_requires_human_inspection` — because a screenshot nobody looked at is just a file.
+Most "evidence before claims" skills are prose. This one ships a **receipt that fails closed**:
+
+1. `capture` renders a page across viewports and tab states and writes PNGs, accessibility snapshots, browser diagnostics, machine-detected structural findings, and `receipt.json` — status `capture_complete_requires_human_inspection`, because a screenshot nobody looked at is just a file.
+2. `attest` appends a written observation per screenshot (`pass` / `caveat` / `fail`, note required, append-only).
+3. `check` exits `0` only when every screenshot has an attestation, none failed, and no structural finding remains. Pass `--spec` and the receipt carries the sha256 of the design spec it was judged against.
+
+An agent can run step 1 and stop. It cannot make step 3 pass without writing down what it saw, for every viewport and state.
 
 ```
 receipt.json
@@ -10,7 +16,9 @@ receipt.json
 ├─ status: capture_complete_requires_human_inspection | structural_failures | capture_failed
 ├─ screenshots[]   viewport + full-page PNGs, accessibility snapshots, per state
 ├─ findings[]      missing_state, state_unchanged, horizontal_overflow, clipped_content, orphan_content
-└─ diagnostics[]   console warnings/errors, page errors, failed requests (redacted)
+├─ diagnostics[]   console warnings/errors, page errors, failed requests (redacted)
+├─ spec            { path, sha256 } of the acceptance spec, when --spec is given
+└─ inspections[]   append-only attestations: path, verdict, note, by, at
 ```
 
 ## What it covers
@@ -45,6 +53,14 @@ node scripts/capture.mjs http://localhost:3000 \
   --out-dir ./.agent-verification/run-1
 ```
 
+Then inspect and attest:
+
+```bash
+node scripts/capture.mjs attest ./.agent-verification/run-1/receipt.json \
+  --path mobile--details--viewport.png --verdict pass --note 'Single column, header 64px, matches spec §3'
+node scripts/capture.mjs check ./.agent-verification/run-1/receipt.json
+```
+
 Run `node scripts/capture.mjs --help` for every option.
 
 | Exit | Meaning |
@@ -52,9 +68,11 @@ Run `node scripts/capture.mjs --help` for every option.
 | `0` | Capture complete; receipt has no structural findings |
 | `1` | Capture failed (receipt records the error) |
 | `2` | Receipt contains structural findings |
+| `3` | `check`: at least one screenshot has no attestation |
+| `4` | `check`: an attestation is `fail` |
 | `64` | Usage error |
 
-Exit `0` does not mean the design is right. It means nothing machine-detectable is wrong. Open the PNGs.
+A capture exit of `0` does not mean the design is right; it means nothing machine-detectable is wrong. `check` is the gate.
 
 ## What the structural checks can and cannot see
 
@@ -76,7 +94,7 @@ Not detected: wrong colors, wrong typography, misalignment, bad hierarchy, wrong
 npm test
 ```
 
-Nine fixture checks: clean page passes; broken page fails with all four finding types; legitimate truncation patterns produce no false positives; hidden and inert tabs are reported; secrets are redacted; `file://` is refused by default; usage errors exit 64 without stack traces; a failed capture leaves a `capture_failed` receipt rather than a stale one; help is complete. CI runs the same suite on every push.
+Eleven fixture checks: clean page passes; broken page fails with all four finding types; legitimate truncation patterns produce no false positives; hidden and inert tabs are reported; secrets are redacted; `file://` is refused by default; usage errors exit 64 without stack traces; a failed capture leaves a `capture_failed` receipt rather than a stale one; help is complete; spec hashes are recorded and `check` fails closed until every PNG is attested; structural findings cannot be attested away. CI runs the same suite on every push.
 
 ## Related work
 
