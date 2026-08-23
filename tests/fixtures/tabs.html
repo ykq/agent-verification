@@ -2,10 +2,10 @@
 <html lang="en"><meta charset="utf-8"><title>Tab semantics fixture</title>
 <style>body{margin:0;font:16px sans-serif}nav{padding:12px}main{padding:20px}.view{display:none}.view.active{display:block}</style>
 <nav>
-<button role="tab"><span>Over</span><span>view</span></button>
-<button role="tab">  Details </button>
-<button role="tab" style="display:none">Hidden</button>
-<button role="tab">Dead</button>
+<button role="tab" aria-selected="true"><span>Over</span><span>view</span></button>
+<button role="tab" aria-selected="false">  Details </button>
+<button role="tab" aria-selected="false" style="display:none">Hidden</button>
+<button role="tab" aria-selected="false">Dead</button>
 </nav>
 <main><section class="view active" data-name="Overview">Overview content</section><section class="view" data-name="Details">Details content</section></main>
 <script>
@@ -13,6 +13,7 @@ document.querySelectorAll('[role=tab]').forEach((tab) => tab.addEventListener('c
   const name = tab.textContent.trim();
   if (name === 'Dead') return; // deliberately inert
   document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.dataset.name === name));
+  document.querySelectorAll('[role=tab]').forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
 }));
 </script>
 </html>

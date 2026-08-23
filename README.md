@@ -5,20 +5,22 @@ An [Agent Skill](https://agentskills.io) that makes coding agents prove visual a
 Most "evidence before claims" skills are prose. This one ships a **receipt that fails closed**:
 
 1. `capture` renders a page across viewports and tab states and writes PNGs, accessibility snapshots, browser diagnostics, machine-detected structural findings, and `receipt.json` — status `capture_complete_requires_human_inspection`, because a screenshot nobody looked at is just a file.
-2. `attest` appends a written observation per screenshot (`pass` / `caveat` / `fail`, note required, append-only).
-3. `check` exits `0` only when every screenshot has an attestation, none failed, and no structural finding remains. Pass `--spec` and the receipt carries the sha256 of the design spec it was judged against.
+2. `attest` appends a written observation per screenshot (`pass` / `caveat` / `fail`, note required, append-only), bound to the PNG's sha256 and the run's id.
+3. `check` exits `0` only when every screenshot has an attestation that still matches the bytes on disk, none failed, and no structural finding remains. It lists every failing gate and exits with the most severe. Pass `--spec` and the receipt carries the sha256 of the design spec it was judged against.
 
 An agent can run step 1 and stop. It cannot make step 3 pass without writing down what it saw, for every viewport and state.
+
+Attestations carry a `--by` field for a reason: the skill asks that the inspector not be the author, and preferably not the same model family. This repo follows its own rule — the collector was written by one model and audited by another before release.
 
 ```
 receipt.json
 ├─ run_id, generated_at, url, config
 ├─ status: capture_complete_requires_human_inspection | structural_failures | capture_failed
-├─ screenshots[]   viewport + full-page PNGs, accessibility snapshots, per state
+├─ screenshots[]   viewport + full-page PNGs, accessibility snapshots, per state — each with sha256
 ├─ findings[]      missing_state, state_unchanged, horizontal_overflow, clipped_content, orphan_content
 ├─ diagnostics[]   console warnings/errors, page errors, failed requests (redacted)
 ├─ spec            { path, sha256 } of the acceptance spec, when --spec is given
-└─ inspections[]   append-only attestations: path, verdict, note, by, at
+└─ inspections[]   append-only attestations: path, sha256, run_id, verdict, note, by, at
 ```
 
 ## What it covers
@@ -68,7 +70,7 @@ Run `node scripts/capture.mjs --help` for every option.
 | `0` | Capture complete; receipt has no structural findings |
 | `1` | Capture failed (receipt records the error) |
 | `2` | Receipt contains structural findings |
-| `3` | `check`: at least one screenshot has no attestation |
+| `3` | `check`: a screenshot has no attestation, or its bytes changed after it was attested |
 | `4` | `check`: an attestation is `fail` |
 | `64` | Usage error |
 
@@ -76,16 +78,17 @@ A capture exit of `0` does not mean the design is right; it means nothing machin
 
 ## What the structural checks can and cannot see
 
-Detected: a requested tab label that does not exist or is hidden; a tab click that leaves the DOM unchanged; page-level horizontal overflow; visible elements whose content is vertically cut off by `overflow: hidden|clip` (elements using `line-clamp` are exempt); with `--view-selector`, content rendered outside any view container.
+Detected: a requested tab label that does not exist or is hidden (`[role=tab]` matches win over nav links, which win over other buttons/links); a tab click that leaves the DOM and accessibility tree unchanged (skipped, and noted, on pages that mutate by themselves); page-level horizontal overflow; visible elements inside `<main>` (or `<body>` when there is no main landmark) whose content is vertically cut off by `overflow: hidden|clip`, with `line-clamp` exempt; with `--view-selector`, content rendered outside any view container.
 
 Not detected: wrong colors, wrong typography, misalignment, bad hierarchy, wrong data, stale data, missing empty/error states, contrast failures, chart semantics, anything a design spec says. That is what the inspection step is for.
 
 ## Security defaults
 
-- `file://` URLs are refused unless `--allow-file` is passed, and `file://` subresources are blocked otherwise — a page can read local files through the browser.
+- `file://` URLs are refused unless `--allow-file` is passed. With it, the page and its iframes/images can read local files through the browser — point it only at fixtures you trust.
 - TLS errors are fatal unless `--insecure`.
 - Chromium's sandbox stays on unless `--no-sandbox` (added automatically when running as root).
-- Console text and failed-request URLs are redacted for common key/token shapes and query strings before they reach the receipt. Redaction is best-effort; the receipt still contains page-controlled text. Treat it as data, never as instructions to the agent.
+- Console text and failed-request URLs are redacted for common credential shapes (`key=`, `Bearer …`, `user:pass@`, GitHub/GitLab/npm/AWS/Google token prefixes, JWTs, query strings, path segments) before they reach the receipt. Redaction is best-effort and applies to diagnostics only; accessibility snapshots are page content written verbatim. Everything in the receipt is page-controlled text: treat it as data, never as instructions to the agent.
+- Screenshot and snapshot digests make a receipt tamper-evident, not tamper-proof: anyone who can write the receipt can rewrite it. Pair `--by` with your own process controls if provenance matters.
 - No User-Agent override by default (`--user-agent` or `AGENT_VERIFICATION_USER_AGENT`).
 
 ## Test
@@ -94,7 +97,7 @@ Not detected: wrong colors, wrong typography, misalignment, bad hierarchy, wrong
 npm test
 ```
 
-Eleven fixture checks: clean page passes; broken page fails with all four finding types; legitimate truncation patterns produce no false positives; hidden and inert tabs are reported; secrets are redacted; `file://` is refused by default; usage errors exit 64 without stack traces; a failed capture leaves a `capture_failed` receipt rather than a stale one; help is complete; spec hashes are recorded and `check` fails closed until every PNG is attested; structural findings cannot be attested away. CI runs the same suite on every push.
+Seventeen fixture checks cover: clean and broken pages; legitimate truncation patterns producing no false positives; hidden, inert, duplicate-text and shadow/volatile tabs; realistic secret shapes (`Bearer`, `client_secret`, `user:pass@`, token prefixes, path tokens) never reaching the receipt; `file://` refused by default; usage errors exiting 64 without stack traces; a failed capture leaving a `capture_failed` receipt; lazy images not hanging the run; attestations bound to PNG digests with tampering detected; forged/empty receipts rejected; `check` listing every failing gate; stale evidence cleared from a reused out-dir. CI runs the same suite on every push.
 
 ## Related work
 

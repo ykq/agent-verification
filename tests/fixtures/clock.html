@@ -1,0 +1,4 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Volatile DOM</title>
+<nav><button role="tab">Overview</button><button role="tab">Dead</button></nav>
+<main><time id="t">0</time></main>
+<script>let n=0;setInterval(()=>{document.getElementById('t').textContent=String(++n)},50);</script></html>

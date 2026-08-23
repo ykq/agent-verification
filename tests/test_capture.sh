@@ -21,7 +21,7 @@ run() { # run <expected-exit> <args...>
   set +e; node "$capture" "$@" >"$test_root/stdout" 2>"$test_root/stderr"; local code=$?; set -e
   [ "$code" -eq "$expected" ] || { cat "$test_root/stderr" >&2; fail "expected exit $expected, got $code for: $*"; }
 }
-receipt() { python3 - "$1" "$2" <<'PY'
+receipt() { python3 - "$1" "$2" <<'PY' || fail "receipt assertion failed for $1"
 import json, sys
 receipt = json.load(open(sys.argv[1]))
 exec(sys.argv[2])
@@ -36,7 +36,8 @@ assert receipt["status"] == "capture_complete_requires_human_inspection", receip
 assert len(receipt["screenshots"]) == 4, receipt["screenshots"]
 assert not receipt["findings"], receipt["findings"]
 assert not receipt["diagnostics"], receipt["diagnostics"]
-assert receipt["run_id"] and receipt["schema_version"] == 2'
+assert receipt["run_id"] and receipt["schema_version"] == 3
+assert all(len(s["sha256"]) == 64 for s in receipt["screenshots"]), "every artifact carries a digest"'
 check "clean page passes"
 
 # 2. Broken page: missing state, overflow, clipping, orphan all detected.
@@ -59,7 +60,7 @@ run 2 "$fx/tabs.html" --allow-file --tabs 'Overview,details,Hidden,Dead' --viewp
   --screenshot-mode viewport --out-dir "$test_root/tabs"
 receipt "$test_root/tabs/receipt.json" '
 shots = {s["state"]: s["clicked"] for s in receipt["screenshots"] if s["kind"] == "viewport"}
-assert shots["Overview"] == "clicked" and shots["details"] == "clicked", shots
+assert shots["Overview"] == "clicked_no_change_already_active" and shots["details"] == "clicked", shots
 hidden = [f for f in receipt["findings"] if f["type"] == "missing_state"]
 assert hidden and hidden[0]["state"] == "Hidden" and hidden[0]["reason"] == "not_visible", receipt["findings"]
 inert = [f for f in receipt["findings"] if f["type"] == "state_unchanged"]
@@ -70,6 +71,10 @@ check "hidden tab and inert tab are reported"
 run 0 "$fx/leak.html" --allow-file --viewports 'test=400x300' --screenshot-mode viewport --out-dir "$test_root/leak"
 ! grep -q 'SECRET123\|SECRET456\|LEAKME\|frag' "$test_root/leak/receipt.json" || fail "secret leaked into receipt"
 grep -q 'REDACTED' "$test_root/leak/receipt.json" || fail "expected REDACTED marker"
+run 0 "$fx/leak2.html" --allow-file --viewports 'test=400x300' --screenshot-mode viewport --out-dir "$test_root/leak2"
+for needle in OPAQUEBEARER111 CLIENTSEC222 AWSSEC333 words999 DBPASS555 dbuser GHPAT66666666 GLPAT7777777 NPMTOK8888888 UPPER99999999999 PATHTOKEN1234567890; do
+  ! grep -q "$needle" "$test_root/leak2/receipt.json" || fail "secret leaked into receipt: $needle"
+done
 check "console and URL secrets redacted"
 
 # 6. file:// refused without --allow-file; no receipt written.
@@ -85,6 +90,13 @@ grep -q '^error: --wait-ms' "$test_root/stderr" || fail "expected clean usage er
 run 64 http://127.0.0.1:9/ --viewports 'a=b'
 run 64 http://127.0.0.1:9/ --bogus 1
 run 64 ftp://example.com/
+run 64 http://127.0.0.1:9/ --tabs --insecure
+run 64 http://127.0.0.1:9/ --viewports 'z=0x0'
+run 64 http://127.0.0.1:9/ --tabs 'Foo Bar,foo-bar'
+touch "$test_root/afile"; run 64 http://127.0.0.1:9/ --out-dir "$test_root/afile"
+run 64 http://127.0.0.1:9/ --spec "$test_root"
+run 64 attest
+run 64 check "$test_root/afile"
 check "usage errors exit 64 without stack traces"
 
 # 8. Capture failure writes a capture_failed receipt and replaces any stale receipt in the out-dir.
@@ -122,12 +134,66 @@ grep -q 'sha256:' "$test_root/stdout" || fail "expected spec hash in check outpu
 run 0 attest "$test_root/attest/receipt.json" --path test--details--viewport.png --verdict fail --note 'On second look the card is clipped'
 run 4 check "$test_root/attest/receipt.json"
 receipt "$test_root/attest/receipt.json" 'assert len(receipt["inspections"]) == 3, "attestations must be append-only"'
+receipt "$test_root/attest/receipt.json" 'assert all(len(i["sha256"]) == 64 and i["run_id"] == receipt["run_id"] for i in receipt["inspections"])'
 check "spec hash recorded; check fails closed until attested; fail verdict rejects"
+
+# 10b. Attestations are bound to PNG bytes: a regenerated screenshot invalidates them; a forged receipt is rejected.
+run 0 "$fx/clean.html" --allow-file --viewports 'test=800x600' --screenshot-mode viewport --out-dir "$test_root/digest"
+run 0 attest "$test_root/digest/receipt.json" --path test--page--viewport.png --verdict pass --note 'Overview card renders cleanly'
+run 0 check "$test_root/digest/receipt.json"
+printf 'tampered' >> "$test_root/digest/test--page--viewport.png"
+run 3 check "$test_root/digest/receipt.json"
+grep -q 'STALE ATTESTATION' "$test_root/stderr" || fail "expected STALE ATTESTATION"
+run 64 attest "$test_root/digest/receipt.json" --path test--page--viewport.png --verdict pass --note 'attesting changed bytes must fail'
+printf '{"schema_version":3,"run_id":"x","status":"forged","screenshots":[],"findings":[],"inspections":[]}\n' > "$test_root/forged.json"
+run 64 check "$test_root/forged.json"
+printf '{"schema_version":3,"run_id":"x","status":"capture_complete_requires_human_inspection","screenshots":[],"findings":[],"inspections":[]}\n' > "$test_root/empty.json"
+run 3 check "$test_root/empty.json"
+grep -q 'NO SCREENSHOTS' "$test_root/stderr" || fail "expected NO SCREENSHOTS"
+check "attestations bound to PNG digests; forged and empty receipts rejected"
+
+# 10c. attest refuses a failed capture; check reports every failure class and exits with the most severe.
+run 1 http://127.0.0.1:9/ --timeout-ms 5000 --out-dir "$test_root/failed"
+run 64 attest "$test_root/failed/receipt.json" --path x.png --verdict pass --note 'cannot attest a failed capture'
+run 1 check "$test_root/failed/receipt.json"
+run 2 "$fx/broken.html" --allow-file --tabs 'Overview,Missing' --viewports 'test=800x600' --screenshot-mode viewport --out-dir "$test_root/multi"
+run 0 attest "$test_root/multi/receipt.json" --path test--overview--viewport.png --verdict fail --note 'clipped card is visible in the PNG'
+run 4 check "$test_root/multi/receipt.json"
+grep -q 'STRUCTURAL FINDINGS' "$test_root/stderr" && grep -q 'UNINSPECTED' "$test_root/stderr" && grep -q 'FAILED ATTESTATIONS' "$test_root/stderr" || fail "check must list every failure class"
+check "failed captures cannot be attested; check lists all failure classes, exits most severe"
 
 # 11. check on a receipt with structural findings fails even if attested.
 run 2 "$fx/broken.html" --allow-file --viewports 'test=800x600' --screenshot-mode viewport --out-dir "$test_root/checkbroken"
 run 0 attest "$test_root/checkbroken/receipt.json" --path test--page--viewport.png --verdict pass --note 'looks fine to me honestly'
 run 2 check "$test_root/checkbroken/receipt.json"
 check "structural findings cannot be attested away"
+
+# 12. Lazy images never block the capture past the timeout.
+run 0 "$fx/lazy.html" --allow-file --viewports 'test=800x600' --screenshot-mode viewport --timeout-ms 4000 --out-dir "$test_root/lazy"
+check "lazy images do not hang the capture"
+
+# 13. Tab order does not invert verdicts: inert tab flagged wherever it is, unless it is the first (possibly already active) state.
+run 2 "$fx/tabs.html" --allow-file --tabs 'Overview,Dead' --viewports 'test=800x600' --screenshot-mode viewport --out-dir "$test_root/order1"
+receipt "$test_root/order1/receipt.json" 'assert [f["state"] for f in receipt["findings"] if f["type"] == "state_unchanged"] == ["Dead"], receipt["findings"]'
+run 0 "$fx/tabs.html" --allow-file --tabs 'Dead,Overview' --viewports 'test=800x600' --screenshot-mode viewport --out-dir "$test_root/order2"
+receipt "$test_root/order2/receipt.json" '
+shots = {s["state"]: s["clicked"] for s in receipt["screenshots"] if s["kind"] == "viewport"}
+assert shots["Dead"] == "clicked_no_change_possibly_already_active" and shots["Overview"] == "clicked_no_change_already_active", shots'
+check "state_unchanged compares before/after the click; active-marked and first tabs are not flagged"
+
+# 14. Volatile pages disable state_unchanged instead of guessing; role=tab beats a header link with the same text; no <main> falls back to body.
+run 0 "$fx/clock.html" --allow-file --tabs 'Overview,Dead' --viewports 'test=800x600' --screenshot-mode viewport --out-dir "$test_root/clock"
+receipt "$test_root/clock/receipt.json" 'assert any(e["type"] == "volatile_dom" for d in receipt["diagnostics"] for e in d["events"]), receipt["diagnostics"]'
+run 0 "$fx/dup.html" --allow-file --tabs 'Overview,Details' --viewports 'test=800x600' --screenshot-mode viewport --out-dir "$test_root/dup"
+grep -q 'Details content' "$test_root/dup/test--details.aria.yml" || fail "role=tab should win over the header link"
+run 2 "$fx/nomain.html" --allow-file --viewports 'test=800x600' --screenshot-mode viewport --out-dir "$test_root/nomain"
+receipt "$test_root/nomain/receipt.json" 'assert any(f["type"] == "clipped_content" and f["scope"] == "body" for f in receipt["findings"]), receipt["findings"]'
+check "volatile DOM skips the check; tab tiers; body fallback without main"
+
+# 15. Stale evidence from an earlier run in the same out-dir is removed.
+run 0 "$fx/clean.html" --allow-file --tabs 'Overview,Details' --viewports 'a=400x300' --screenshot-mode viewport --out-dir "$test_root/reuse"
+run 0 "$fx/clean.html" --allow-file --viewports 'b=400x300' --screenshot-mode viewport --out-dir "$test_root/reuse"
+[ ! -e "$test_root/reuse/a--overview--viewport.png" ] || fail "stale PNG survived"
+check "stale evidence cleared from a reused out-dir"
 
 echo "agent-verification: $pass checks passed"

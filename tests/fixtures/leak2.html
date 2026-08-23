@@ -1,0 +1,8 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Secret leak fixture 2</title>
+<main>Logs realistic secret shapes.</main>
+<script>
+console.error('Authorization: Bearer OPAQUEBEARER111');
+console.warn('client_secret=CLIENTSEC222 aws_secret_access_key=AWSSEC333 password: "two words999"');
+console.warn('DATABASE_URL=postgres://dbuser:DBPASS555@db.internal/app github_pat_GHPAT66666666 glpat-GLPAT7777777 npm_NPMTOK8888888 SK-UPPER99999999999');
+fetch('http://127.0.0.1:9/api/sk-PATHTOKEN1234567890/x').catch(() => {});
+</script></html>

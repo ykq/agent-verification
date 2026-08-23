@@ -1,0 +1,6 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Header link vs tab</title>
+<style>.view{display:none}.view.active{display:block}</style>
+<header><a href="#footer">Details</a></header>
+<nav><button role="tab">Overview</button><button role="tab">Details</button></nav>
+<main><section class="view active" data-name="Overview">Overview content</section><section class="view" data-name="Details">Details content</section></main>
+<script>document.querySelectorAll('[role=tab]').forEach((tab)=>tab.addEventListener('click',()=>{const n=tab.textContent.trim();document.querySelectorAll('.view').forEach((v)=>v.classList.toggle('active',v.dataset.name===n))}));</script></html>
