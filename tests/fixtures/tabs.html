@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Tab semantics fixture</title>
+<style>body{margin:0;font:16px sans-serif}nav{padding:12px}main{padding:20px}.view{display:none}.view.active{display:block}</style>
+<nav>
+<button role="tab"><span>Over</span><span>view</span></button>
+<button role="tab">  Details </button>
+<button role="tab" style="display:none">Hidden</button>
+<button role="tab">Dead</button>
+</nav>
+<main><section class="view active" data-name="Overview">Overview content</section><section class="view" data-name="Details">Details content</section></main>
+<script>
+document.querySelectorAll('[role=tab]').forEach((tab) => tab.addEventListener('click', () => {
+  const name = tab.textContent.trim();
+  if (name === 'Dead') return; // deliberately inert
+  document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.dataset.name === name));
+}));
+</script>
+</html>

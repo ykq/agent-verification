@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Secret leak fixture</title>
+<main>Page that logs secrets to the console and a failed request with a key in its query string.</main>
+<script>
+console.warn('api_key=SECRET123 token: sk-SECRET456');
+fetch('http://127.0.0.1:9/api?api_key=LEAKME#frag').catch(() => {});
+</script>
+</html>

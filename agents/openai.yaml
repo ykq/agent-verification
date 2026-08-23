@@ -1,0 +1,6 @@
+interface:
+  display_name: "Agent Verification"
+  short_description: "Evidence-first verification of agent claims"
+  default_prompt: "Use $agent-verification to test the agent's claims against independent evidence before accepting the result."
+policy:
+  allow_implicit_invocation: true

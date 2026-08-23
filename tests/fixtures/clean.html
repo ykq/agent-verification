@@ -1,0 +1,7 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Clean fixture</title>
+<style>body{margin:0;font:16px sans-serif}nav{padding:12px}main{padding:20px}.view{display:none}.view.active{display:block}.card{padding:20px;border:1px solid #999}</style>
+<nav><button onclick="show('Overview')">Overview</button><button onclick="show('Details')">Details</button></nav>
+<main><section class="view active" data-name="Overview"><article class="card">Overview is clean.</article></section><section class="view" data-name="Details"><article class="card">Details are clean.</article></section></main>
+<script>function show(name){document.querySelectorAll('.view').forEach(v=>v.classList.toggle('active',v.dataset.name===name))}</script>
+</html>
