@@ -1,0 +1,40 @@
+- banner:
+  - heading "Orders" [level=1]
+  - text: staging
+- navigation:
+  - tab "Overview"
+  - tab "Orders" [selected]
+- main:
+  - table:
+    - rowgroup:
+      - row "Order Customer Total Status":
+        - columnheader "Order"
+        - columnheader "Customer"
+        - columnheader "Total"
+        - columnheader "Status"
+    - rowgroup:
+      - row "#10482 M. Okafor $142.00 Shipped":
+        - cell "#10482"
+        - cell "M. Okafor"
+        - cell "$142.00"
+        - cell "Shipped"
+      - row "#10481 L. Brandt $38.50 Shipped":
+        - cell "#10481"
+        - cell "L. Brandt"
+        - cell "$38.50"
+        - cell "Shipped"
+      - row "#10480 S. Ito $611.20 Awaiting stock":
+        - cell "#10480"
+        - cell "S. Ito"
+        - cell "$611.20"
+        - cell "Awaiting stock"
+      - row "#10479 R. Alvarez $27.00 Delivered":
+        - cell "#10479"
+        - cell "R. Alvarez"
+        - cell "$27.00"
+        - cell "Delivered"
+      - row "#10478 P. Nkemelu $219.99 Delivered":
+        - cell "#10478"
+        - cell "P. Nkemelu"
+        - cell "$219.99"
+        - cell "Delivered"

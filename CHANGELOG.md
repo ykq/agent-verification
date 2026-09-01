@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- README walkthrough with a real run: demo dashboard under `docs/demo/`, committed receipts and screenshots under `docs/example/`, covering a caught `clipped_content` defect, the fix, attestation, and stale-attestation detection.
+- CI: `GITHUB_TOKEN` restricted to `contents: read`.
+- Default branch renamed `master` → `main`.
+
 ## 0.1.0
 
 - Receipt schema 3: every artifact carries its sha256; attestations are bound to digest + run_id; `check` detects tampered or regenerated screenshots, rejects forged/empty receipts, and reports every failing gate.

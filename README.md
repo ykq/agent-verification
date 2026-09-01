@@ -65,6 +65,150 @@ node scripts/capture.mjs check ./.agent-verification/run-1/receipt.json
 
 Run `node scripts/capture.mjs --help` for every option.
 
+## Walkthrough
+
+Everything below is a real run against [`docs/demo/index.html`](docs/demo/index.html), a small orders dashboard with two tabs and one deliberate defect: the summary paragraph is capped at three lines with `overflow: hidden`. On desktop the text fits. On a phone it wraps to seven lines and the cap cuts it mid-sentence. The receipts and PNGs are committed under [`docs/example/`](docs/example/) so you can read them without running anything.
+
+Reproduce it yourself:
+
+```bash
+python3 -m http.server 8931 --directory docs/demo &
+node scripts/capture.mjs http://127.0.0.1:8931/ \
+  --tabs 'Overview,Orders' --viewports 'desktop=1280x800,mobile=390x844' \
+  --ready-selector main --out-dir ./.agent-verification/run-1
+```
+
+### 1. Capture finds the clip before anyone opens a screenshot
+
+```text
+shot: run-1/desktop--overview--viewport.png
+shot: run-1/desktop--overview--full.png
+shot: run-1/desktop--orders--viewport.png
+shot: run-1/desktop--orders--full.png
+shot: run-1/mobile--overview--viewport.png
+shot: run-1/mobile--overview--full.png
+shot: run-1/mobile--orders--viewport.png
+shot: run-1/mobile--orders--full.png
+receipt: run-1/receipt.json
+run_id: 20260901233310-4966a6
+status: structural_failures
+[
+  {
+    "type": "clipped_content",
+    "viewport": "mobile",
+    "state": "Overview",
+    "scope": "main",
+    "elements": [
+      { "tag": "p", "class": "summary",
+        "text": "Order volume is tracking 6% above yesterday, driven by the spring catalogue laun" }
+    ]
+  }
+]
+```
+
+Exit code `2`. The desktop render is fine; the mobile one is not:
+
+| desktop, Overview | mobile, Overview |
+|---|---|
+| ![desktop overview, summary fully visible](docs/example/run-1/desktop--overview--viewport.png) | ![mobile overview, summary cut off after "improved after the"](docs/example/run-1/mobile--overview--viewport.png) |
+
+`check` on this receipt refuses for two reasons at once, and says so:
+
+```text
+$ node scripts/capture.mjs check run-1/receipt.json
+receipt: run-1/receipt.json
+run_id: 20260901233310-4966a6
+status: structural_failures
+spec: none recorded
+screenshots: 8, attested: 0, findings: 1
+STRUCTURAL FINDINGS: clipped_content@mobile/Overview
+UNINSPECTED: run-1/desktop--overview--viewport.png, run-1/desktop--overview--full.png, ... (8 files)
+$ echo $?
+2
+```
+
+You cannot attest your way past a structural finding. Fix the page instead.
+
+### 2. Fix, rerun, and the gate still says no
+
+The fix is one line: drop the `max-height`/`overflow` cap on `.summary`. Rerun with a new out-dir and the capture comes back clean:
+
+```text
+receipt: run-2/receipt.json
+run_id: 20260901233439-bd266e
+status: capture_complete_requires_human_inspection
+```
+
+Exit code `0`, but `check` still fails, because a clean capture nobody looked at proves nothing:
+
+```text
+$ node scripts/capture.mjs check run-2/receipt.json
+screenshots: 8, attested: 0, findings: 0
+UNINSPECTED: run-2/desktop--overview--viewport.png, ... (8 files)
+$ echo $?
+3
+```
+
+### 3. Open every PNG, write down what you saw
+
+| mobile, Overview (fixed) | mobile, Orders |
+|---|---|
+| ![mobile overview after the fix, all seven lines visible](docs/example/run-2/mobile--overview--viewport.png) | ![mobile orders table, fits without horizontal scroll](docs/example/run-2/mobile--orders--viewport.png) |
+
+One attestation per screenshot, note required, `--by` naming the inspector:
+
+```bash
+node scripts/capture.mjs attest run-2/receipt.json --path mobile--overview--viewport.png \
+  --verdict pass --note 'Tiles in 2x2 grid; summary shows all 7 lines ending "outlet pricing."; Alerts card intact' \
+  --by claude-fable-5-1
+node scripts/capture.mjs attest run-2/receipt.json --path mobile--orders--viewport.png \
+  --verdict caveat --note 'Table fits 390px with no horizontal scroll; "Awaiting stock" and "P. Nkemelu" wrap to two lines: acceptable but tight' \
+  --by claude-fable-5-1
+# ... six more, one per PNG
+```
+
+Each attestation is stored with the PNG's digest and the run id, so it cannot be moved to another file or another run:
+
+```json
+{
+  "path": "run-2/mobile--overview--viewport.png",
+  "sha256": "4788d4734a7f50aebf18ed8807833c8d16aa4a08eed4f0c4271e4f9cb95c9851",
+  "run_id": "20260901233439-bd266e",
+  "viewport": "mobile", "state": "Overview",
+  "verdict": "pass",
+  "note": "Tiles in 2x2 grid; summary shows all 7 lines ending \"outlet pricing.\"; Alerts card intact",
+  "by": "claude-fable-5-1",
+  "at": "2026-09-01T23:34:44.240Z"
+}
+```
+
+Now the gate opens:
+
+```text
+$ node scripts/capture.mjs check run-2/receipt.json
+screenshots: 8, attested: 8, findings: 0
+OK with caveats
+$ echo $?
+0
+```
+
+### 4. Regenerated or edited screenshots go stale
+
+Change a single byte of an attested PNG (or re-run capture into the same directory) and the attestation no longer matches the file:
+
+```text
+$ printf '\0' >> run-2/mobile--overview--viewport.png
+$ node scripts/capture.mjs check run-2/receipt.json
+screenshots: 8, attested: 7, findings: 0
+STALE ATTESTATION: run-2/mobile--overview--viewport.png (bytes changed since attestation)
+$ echo $?
+3
+```
+
+The report an agent hands back should quote the `run_id`, the `check` result, and the attestation notes. If it cannot, it did not verify.
+
+In the committed example the same model wrote the demo page and inspected it, which is exactly what the skill tells you not to do for real work; the demo shows the mechanics, not an independence claim. The receipts under `docs/example/` keep the absolute paths of the machine that produced them (`/tmp/demo/...`); the transcript above shortens them.
+
 | Exit | Meaning |
 |---|---|
 | `0` | Capture complete; receipt has no structural findings |

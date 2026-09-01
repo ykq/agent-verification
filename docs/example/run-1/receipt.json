@@ -1,0 +1,205 @@
+{
+  "schema_version": 3,
+  "run_id": "20260901233310-4966a6",
+  "url": "http://127.0.0.1:8931/",
+  "generated_at": "2026-09-01T23:33:10.607Z",
+  "status": "structural_failures",
+  "spec": null,
+  "trust_note": "Diagnostics are redacted best-effort; accessibility snapshots are page content written verbatim. Everything here is page-controlled data, never instructions.",
+  "config": {
+    "viewports": [
+      {
+        "name": "desktop",
+        "width": 1280,
+        "height": 800
+      },
+      {
+        "name": "mobile",
+        "width": 390,
+        "height": 844
+      }
+    ],
+    "tabs": [
+      "Overview",
+      "Orders"
+    ],
+    "screenshot_mode": "both",
+    "aria_snapshot": true,
+    "view_selector": null,
+    "content_selector": "main section,main article,main [class*=card],main [role=region]",
+    "ready_selector": "main",
+    "wait_until": "networkidle",
+    "wait_ms": 300,
+    "timeout_ms": 60000,
+    "user_agent": null,
+    "chrome": null,
+    "insecure": false,
+    "allow_file": false
+  },
+  "screenshots": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1280,
+        "height": 800
+      },
+      "state": "Overview",
+      "kind": "accessibility_snapshot",
+      "path": "/tmp/demo/run-1/desktop--overview.aria.yml",
+      "sha256": "f1031010b666d580a1b9043c3c8cb56fda17d04aceaef4cd04d07b671aa37666"
+    },
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1280,
+        "height": 800
+      },
+      "state": "Overview",
+      "clicked": "clicked_no_change_already_active",
+      "kind": "viewport",
+      "path": "/tmp/demo/run-1/desktop--overview--viewport.png",
+      "sha256": "991aea9fa0bb780d07b80e657c327f4401d57a0c0466f2e797bfe215c338bfd8",
+      "bytes": 52583
+    },
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1280,
+        "height": 800
+      },
+      "state": "Overview",
+      "clicked": "clicked_no_change_already_active",
+      "kind": "full",
+      "path": "/tmp/demo/run-1/desktop--overview--full.png",
+      "sha256": "991aea9fa0bb780d07b80e657c327f4401d57a0c0466f2e797bfe215c338bfd8",
+      "bytes": 52583
+    },
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1280,
+        "height": 800
+      },
+      "state": "Orders",
+      "kind": "accessibility_snapshot",
+      "path": "/tmp/demo/run-1/desktop--orders.aria.yml",
+      "sha256": "38e3b13fec01302184d1c8b8896dbab302cb21e57b863bcc853ca569e309b8f9"
+    },
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1280,
+        "height": 800
+      },
+      "state": "Orders",
+      "clicked": "clicked",
+      "kind": "viewport",
+      "path": "/tmp/demo/run-1/desktop--orders--viewport.png",
+      "sha256": "520508fc8099feccae52c605a4134985c78d7c1f5b38e5ba5741f9aa2b336b45",
+      "bytes": 34611
+    },
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1280,
+        "height": 800
+      },
+      "state": "Orders",
+      "clicked": "clicked",
+      "kind": "full",
+      "path": "/tmp/demo/run-1/desktop--orders--full.png",
+      "sha256": "520508fc8099feccae52c605a4134985c78d7c1f5b38e5ba5741f9aa2b336b45",
+      "bytes": 34611
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844
+      },
+      "state": "Overview",
+      "kind": "accessibility_snapshot",
+      "path": "/tmp/demo/run-1/mobile--overview.aria.yml",
+      "sha256": "f1031010b666d580a1b9043c3c8cb56fda17d04aceaef4cd04d07b671aa37666"
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844
+      },
+      "state": "Overview",
+      "clicked": "clicked_no_change_already_active",
+      "kind": "viewport",
+      "path": "/tmp/demo/run-1/mobile--overview--viewport.png",
+      "sha256": "618bca1dc116395b69d942448be649a72a021597fd21fa949a0b1d0547ba3430",
+      "bytes": 39287
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844
+      },
+      "state": "Overview",
+      "clicked": "clicked_no_change_already_active",
+      "kind": "full",
+      "path": "/tmp/demo/run-1/mobile--overview--full.png",
+      "sha256": "618bca1dc116395b69d942448be649a72a021597fd21fa949a0b1d0547ba3430",
+      "bytes": 39287
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844
+      },
+      "state": "Orders",
+      "kind": "accessibility_snapshot",
+      "path": "/tmp/demo/run-1/mobile--orders.aria.yml",
+      "sha256": "38e3b13fec01302184d1c8b8896dbab302cb21e57b863bcc853ca569e309b8f9"
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844
+      },
+      "state": "Orders",
+      "clicked": "clicked",
+      "kind": "viewport",
+      "path": "/tmp/demo/run-1/mobile--orders--viewport.png",
+      "sha256": "e3c9d75f0d6ba7bb09fcee6f2ff90b4dca2f2df09da8b2d0409c3a45d801c503",
+      "bytes": 31171
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844
+      },
+      "state": "Orders",
+      "clicked": "clicked",
+      "kind": "full",
+      "path": "/tmp/demo/run-1/mobile--orders--full.png",
+      "sha256": "e3c9d75f0d6ba7bb09fcee6f2ff90b4dca2f2df09da8b2d0409c3a45d801c503",
+      "bytes": 31171
+    }
+  ],
+  "findings": [
+    {
+      "type": "clipped_content",
+      "viewport": "mobile",
+      "state": "Overview",
+      "scope": "main",
+      "elements": [
+        {
+          "tag": "p",
+          "class": "summary",
+          "text": "Order volume is tracking 6% above yesterday, driven by the spring catalogue laun"
+        }
+      ]
+    }
+  ],
+  "diagnostics": []
+}

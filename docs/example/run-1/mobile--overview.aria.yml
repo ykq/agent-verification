@@ -1,0 +1,12 @@
+- banner:
+  - heading "Orders" [level=1]
+  - text: staging
+- navigation:
+  - tab "Overview" [selected]
+  - tab "Orders"
+- main:
+  - text: Orders today 1,284 +6.2% vs yesterday Revenue $48,910 +3.9% Refunds 17 −2 Avg. fulfilment 2h 14m −11m
+  - heading "Summary" [level=2]
+  - paragraph: Order volume is tracking 6% above yesterday, driven by the spring catalogue launch. Fulfilment time improved after the second packing station came online at 09:00. Seventeen refunds were issued, all for the discontinued 40L tote; the listing has been pulled and remaining inventory moved to outlet pricing.
+  - heading "Alerts" [level=2]
+  - paragraph: No open alerts. Last incident closed 3 days ago.

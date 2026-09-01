@@ -1,0 +1,281 @@
+{
+  "schema_version": 3,
+  "run_id": "20260901233439-bd266e",
+  "url": "http://127.0.0.1:8932/",
+  "generated_at": "2026-09-01T23:34:39.883Z",
+  "status": "capture_complete_requires_human_inspection",
+  "spec": null,
+  "trust_note": "Diagnostics are redacted best-effort; accessibility snapshots are page content written verbatim. Everything here is page-controlled data, never instructions.",
+  "config": {
+    "viewports": [
+      {
+        "name": "desktop",
+        "width": 1280,
+        "height": 800
+      },
+      {
+        "name": "mobile",
+        "width": 390,
+        "height": 844
+      }
+    ],
+    "tabs": [
+      "Overview",
+      "Orders"
+    ],
+    "screenshot_mode": "both",
+    "aria_snapshot": true,
+    "view_selector": null,
+    "content_selector": "main section,main article,main [class*=card],main [role=region]",
+    "ready_selector": "main",
+    "wait_until": "networkidle",
+    "wait_ms": 300,
+    "timeout_ms": 60000,
+    "user_agent": null,
+    "chrome": null,
+    "insecure": false,
+    "allow_file": false
+  },
+  "screenshots": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1280,
+        "height": 800
+      },
+      "state": "Overview",
+      "kind": "accessibility_snapshot",
+      "path": "/tmp/demo/run-2/desktop--overview.aria.yml",
+      "sha256": "f1031010b666d580a1b9043c3c8cb56fda17d04aceaef4cd04d07b671aa37666"
+    },
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1280,
+        "height": 800
+      },
+      "state": "Overview",
+      "clicked": "clicked_no_change_already_active",
+      "kind": "viewport",
+      "path": "/tmp/demo/run-2/desktop--overview--viewport.png",
+      "sha256": "991aea9fa0bb780d07b80e657c327f4401d57a0c0466f2e797bfe215c338bfd8",
+      "bytes": 52583
+    },
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1280,
+        "height": 800
+      },
+      "state": "Overview",
+      "clicked": "clicked_no_change_already_active",
+      "kind": "full",
+      "path": "/tmp/demo/run-2/desktop--overview--full.png",
+      "sha256": "991aea9fa0bb780d07b80e657c327f4401d57a0c0466f2e797bfe215c338bfd8",
+      "bytes": 52583
+    },
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1280,
+        "height": 800
+      },
+      "state": "Orders",
+      "kind": "accessibility_snapshot",
+      "path": "/tmp/demo/run-2/desktop--orders.aria.yml",
+      "sha256": "38e3b13fec01302184d1c8b8896dbab302cb21e57b863bcc853ca569e309b8f9"
+    },
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1280,
+        "height": 800
+      },
+      "state": "Orders",
+      "clicked": "clicked",
+      "kind": "viewport",
+      "path": "/tmp/demo/run-2/desktop--orders--viewport.png",
+      "sha256": "520508fc8099feccae52c605a4134985c78d7c1f5b38e5ba5741f9aa2b336b45",
+      "bytes": 34611
+    },
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1280,
+        "height": 800
+      },
+      "state": "Orders",
+      "clicked": "clicked",
+      "kind": "full",
+      "path": "/tmp/demo/run-2/desktop--orders--full.png",
+      "sha256": "520508fc8099feccae52c605a4134985c78d7c1f5b38e5ba5741f9aa2b336b45",
+      "bytes": 34611
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844
+      },
+      "state": "Overview",
+      "kind": "accessibility_snapshot",
+      "path": "/tmp/demo/run-2/mobile--overview.aria.yml",
+      "sha256": "f1031010b666d580a1b9043c3c8cb56fda17d04aceaef4cd04d07b671aa37666"
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844
+      },
+      "state": "Overview",
+      "clicked": "clicked_no_change_already_active",
+      "kind": "viewport",
+      "path": "/tmp/demo/run-2/mobile--overview--viewport.png",
+      "sha256": "4788d4734a7f50aebf18ed8807833c8d16aa4a08eed4f0c4271e4f9cb95c9851",
+      "bytes": 51055
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844
+      },
+      "state": "Overview",
+      "clicked": "clicked_no_change_already_active",
+      "kind": "full",
+      "path": "/tmp/demo/run-2/mobile--overview--full.png",
+      "sha256": "4788d4734a7f50aebf18ed8807833c8d16aa4a08eed4f0c4271e4f9cb95c9851",
+      "bytes": 51055
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844
+      },
+      "state": "Orders",
+      "kind": "accessibility_snapshot",
+      "path": "/tmp/demo/run-2/mobile--orders.aria.yml",
+      "sha256": "38e3b13fec01302184d1c8b8896dbab302cb21e57b863bcc853ca569e309b8f9"
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844
+      },
+      "state": "Orders",
+      "clicked": "clicked",
+      "kind": "viewport",
+      "path": "/tmp/demo/run-2/mobile--orders--viewport.png",
+      "sha256": "e3c9d75f0d6ba7bb09fcee6f2ff90b4dca2f2df09da8b2d0409c3a45d801c503",
+      "bytes": 31171
+    },
+    {
+      "viewport": {
+        "name": "mobile",
+        "width": 390,
+        "height": 844
+      },
+      "state": "Orders",
+      "clicked": "clicked",
+      "kind": "full",
+      "path": "/tmp/demo/run-2/mobile--orders--full.png",
+      "sha256": "e3c9d75f0d6ba7bb09fcee6f2ff90b4dca2f2df09da8b2d0409c3a45d801c503",
+      "bytes": 31171
+    }
+  ],
+  "findings": [],
+  "diagnostics": [],
+  "inspections": [
+    {
+      "path": "/tmp/demo/run-2/desktop--overview--viewport.png",
+      "sha256": "991aea9fa0bb780d07b80e657c327f4401d57a0c0466f2e797bfe215c338bfd8",
+      "run_id": "20260901233439-bd266e",
+      "viewport": "desktop",
+      "state": "Overview",
+      "verdict": "pass",
+      "note": "Four stat tiles in one row; summary paragraph fully visible (3 lines); Alerts card below; nothing clipped",
+      "by": "claude-fable-5-1",
+      "at": "2026-09-01T23:34:44.017Z"
+    },
+    {
+      "path": "/tmp/demo/run-2/desktop--overview--full.png",
+      "sha256": "991aea9fa0bb780d07b80e657c327f4401d57a0c0466f2e797bfe215c338bfd8",
+      "run_id": "20260901233439-bd266e",
+      "viewport": "desktop",
+      "state": "Overview",
+      "verdict": "pass",
+      "note": "Full page identical to viewport; content shorter than 800px",
+      "by": "claude-fable-5-1",
+      "at": "2026-09-01T23:34:44.072Z"
+    },
+    {
+      "path": "/tmp/demo/run-2/desktop--orders--viewport.png",
+      "sha256": "520508fc8099feccae52c605a4134985c78d7c1f5b38e5ba5741f9aa2b336b45",
+      "run_id": "20260901233439-bd266e",
+      "viewport": "desktop",
+      "state": "Orders",
+      "verdict": "pass",
+      "note": "Orders tab active; 5-row table, 4 columns aligned; status colours green/amber",
+      "by": "claude-fable-5-1",
+      "at": "2026-09-01T23:34:44.128Z"
+    },
+    {
+      "path": "/tmp/demo/run-2/desktop--orders--full.png",
+      "sha256": "520508fc8099feccae52c605a4134985c78d7c1f5b38e5ba5741f9aa2b336b45",
+      "run_id": "20260901233439-bd266e",
+      "viewport": "desktop",
+      "state": "Orders",
+      "verdict": "pass",
+      "note": "Full page identical to viewport",
+      "by": "claude-fable-5-1",
+      "at": "2026-09-01T23:34:44.183Z"
+    },
+    {
+      "path": "/tmp/demo/run-2/mobile--overview--viewport.png",
+      "sha256": "4788d4734a7f50aebf18ed8807833c8d16aa4a08eed4f0c4271e4f9cb95c9851",
+      "run_id": "20260901233439-bd266e",
+      "viewport": "mobile",
+      "state": "Overview",
+      "verdict": "pass",
+      "note": "Tiles in 2x2 grid; summary shows all 7 lines ending \"outlet pricing.\"; Alerts card intact",
+      "by": "claude-fable-5-1",
+      "at": "2026-09-01T23:34:44.240Z"
+    },
+    {
+      "path": "/tmp/demo/run-2/mobile--overview--full.png",
+      "sha256": "4788d4734a7f50aebf18ed8807833c8d16aa4a08eed4f0c4271e4f9cb95c9851",
+      "run_id": "20260901233439-bd266e",
+      "viewport": "mobile",
+      "state": "Overview",
+      "verdict": "pass",
+      "note": "Full page identical to viewport; nothing below the fold",
+      "by": "claude-fable-5-1",
+      "at": "2026-09-01T23:34:44.299Z"
+    },
+    {
+      "path": "/tmp/demo/run-2/mobile--orders--viewport.png",
+      "sha256": "e3c9d75f0d6ba7bb09fcee6f2ff90b4dca2f2df09da8b2d0409c3a45d801c503",
+      "run_id": "20260901233439-bd266e",
+      "viewport": "mobile",
+      "state": "Orders",
+      "verdict": "caveat",
+      "note": "Table fits 390px with no horizontal scroll; \"Awaiting stock\" and \"P. Nkemelu\" wrap to two lines: acceptable but tight",
+      "by": "claude-fable-5-1",
+      "at": "2026-09-01T23:34:44.357Z"
+    },
+    {
+      "path": "/tmp/demo/run-2/mobile--orders--full.png",
+      "sha256": "e3c9d75f0d6ba7bb09fcee6f2ff90b4dca2f2df09da8b2d0409c3a45d801c503",
+      "run_id": "20260901233439-bd266e",
+      "viewport": "mobile",
+      "state": "Orders",
+      "verdict": "pass",
+      "note": "Full page identical to viewport",
+      "by": "claude-fable-5-1",
+      "at": "2026-09-01T23:34:44.412Z"
+    }
+  ]
+}
