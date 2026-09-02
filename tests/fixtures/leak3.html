@@ -3,6 +3,8 @@
 <body>
 <script>
 console.error('failed to reach https://dashboard.acme-internal.example/customers/jane.doe@acme.com/ssn-123-45-6789')
+console.error('ipv6 endpoint http://[::1]:8000/secret/private')
+console.error('local traces at /home/alice/private/notes and C:\\Users\\Alice\\private\\notes')
 fetch('/tenants/acme-corp/users/jane.doe/private-notes?x=1').catch(()=>{})
 </script>
 </body>

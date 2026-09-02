@@ -9,7 +9,7 @@
 //
 // A receipt is evidence, not a verdict: someone still has to look at the PNGs.
 import { createRequire } from 'node:module';
-import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
+import { accessSync, closeSync, constants, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -31,9 +31,8 @@ Evidence:
   --viewports NAME=WxH,...     Default: desktop=1440x1000,mobile=390x844
   --screenshot-mode MODE       viewport, full, or both (default: both)
   --no-aria-snapshot           Skip accessibility snapshots
-  --out-dir PATH               Default: a fresh directory under the OS temp dir. An existing directory is
-                               cleared of prior capture artifacts (receipt.json, *--*--viewport.png,
-                               *--*--full.png, *--*.aria.yml) first; use a fresh directory per run
+  --out-dir PATH               Default: a fresh directory under the OS temp dir. An existing directory is reused only
+                               if it holds a receipt.json from this tool; that receipt and the files it lists are removed first
   --spec PATH                  Acceptance spec / design system file; its sha256 is recorded
 
 Structural checks:
@@ -170,10 +169,15 @@ const TOKEN_SHAPES = [
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
 ];
 let keepPaths = false;
+let configuredUserAgent = '';
 function redact(text) {
   let out = String(text ?? '');
-  out = out.replace(/[a-z][a-z0-9+.-]*:\/\/[^\s'"<>)\]]+/gi, (match) => redactUrl(match));
+  if (configuredUserAgent) out = out.replaceAll(configuredUserAgent, '[USER-AGENT]');
+  out = out.replace(/[a-z][a-z0-9+.-]*:\/\/[^\s'"<>)]*/gi, (match) => redactUrl(match));
   out = out.replace(USERINFO, '$1[REDACTED]:[REDACTED]@');
+  out = out.replace(/(?:\/home\/|\/Users\/)[^\s'"<>)]*/g, '[REDACTED-PATH]');
+  out = out.replace(/\b[A-Za-z]:\\Users\\[^\s'"<>)]*/g, '[REDACTED-PATH]');
+  out = out.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[REDACTED]');
   out = out.replace(AUTH_SCHEME, '$1 [REDACTED]'); // before key handling, which would otherwise eat the scheme word
   out = out.replace(KEY_ASSIGNMENT, '$1$2[REDACTED]');
   for (const shape of TOKEN_SHAPES) out = out.replace(shape, '[REDACTED]');
@@ -196,7 +200,7 @@ function redactUrl(raw) {
       }).join('/');
     }
     return url.toString();
-  } catch { return redact(raw); }
+  } catch { return '[REDACTED-URL]'; }
 }
 
 // --------------------------------------------------------------------------- receipt helpers
@@ -252,7 +256,7 @@ function receiptWriteError(receiptPath, error) {
     : error;
 }
 
-function withReceiptLock(receiptPath, fn) {
+function acquireReceiptLock(receiptPath, heartbeat = false) {
   try {
     const lockPath = `${receiptPath}.lock`;
     const deadline = Date.now() + 10000;
@@ -275,21 +279,30 @@ function withReceiptLock(receiptPath, fn) {
         Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
       }
     }
-    try {
-      return fn();
-    } finally {
+    const heartbeatTimer = heartbeat ? setInterval(() => {
+      try { const now = new Date(); utimesSync(lockPath, now, now); } catch { /* a hard crash is recovered by stale-lock handling */ }
+    }, 30000) : null;
+    heartbeatTimer?.unref();
+    return () => {
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
       closeSync(lockFd);
       try { unlinkSync(lockPath); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-    }
+    };
   } catch (error) {
     throw receiptWriteError(receiptPath, error);
   }
+}
+
+function withReceiptLock(receiptPath, fn) {
+  const release = acquireReceiptLock(receiptPath);
+  try { return fn(); } finally { release(); }
 }
 
 function writeReceiptAtomic(receiptPath, receipt) {
   const temporaryPath = `${receiptPath}.tmp-${process.pid}-${randomBytes(6).toString('hex')}`;
   try {
     try {
+      if (existsSync(receiptPath)) accessSync(receiptPath, constants.W_OK);
       writeFileSync(temporaryPath, `${JSON.stringify(receipt, null, 2)}\n`);
       renameSync(temporaryPath, receiptPath);
     } finally {
@@ -348,6 +361,9 @@ function check(argv) {
     }
   }
   let receipt = readReceipt(receiptPath);
+  if (Object.hasOwn(receipt, 'required_coverage') && !Array.isArray(receipt.required_coverage)) {
+    throw new UsageError('receipt has unreadable required_coverage');
+  }
   const storedCoverage = Array.isArray(receipt.required_coverage)
     ? [...new Set(receipt.required_coverage.map(canonicalCoverage))] : [];
   const enforcedCoverage = [...storedCoverage];
@@ -458,21 +474,29 @@ try { config = parseArgs(argv); } catch (error) {
   process.exit(EXIT.usage);
 }
 keepPaths = config.keepPaths;
+configuredUserAgent = config.userAgent;
 
 let carriedRequiredCoverage;
+let releaseCaptureLock;
 if (config.outDir) {
   try {
     mkdirSync(config.outDir, { recursive: true });
-    const names = readdirSync(config.outDir);
+    releaseCaptureLock = acquireReceiptLock(join(config.outDir, 'receipt.json'), true);
+    const names = readdirSync(config.outDir).filter((name) => name !== 'receipt.json.lock');
     if (names.length) {
       let priorReceipt;
       try {
         priorReceipt = readReceipt(join(config.outDir, 'receipt.json'));
-        if (Array.isArray(priorReceipt.required_coverage) && priorReceipt.required_coverage.every((entry) => typeof entry === 'string')) {
-          carriedRequiredCoverage = [...new Set(priorReceipt.required_coverage.map(canonicalCoverage))];
-        }
       } catch { /* not a reusable capture directory */ }
       if (!priorReceipt) throw new UsageError(`refusing to reuse non-empty --out-dir without a prior receipt.json from this tool: ${config.outDir}`);
+      if (Object.hasOwn(priorReceipt, 'required_coverage')) {
+        try {
+          if (!Array.isArray(priorReceipt.required_coverage) || !priorReceipt.required_coverage.every((entry) => typeof entry === 'string')) throw new Error('invalid required_coverage');
+          carriedRequiredCoverage = [...new Set(priorReceipt.required_coverage.map(canonicalCoverage))];
+        } catch {
+          throw new UsageError(`refusing to reuse --out-dir: prior receipt has an unreadable required_coverage: ${config.outDir}`);
+        }
+      }
       const listedFiles = new Set(['receipt.json']);
       for (const shot of priorReceipt.screenshots) {
         if (typeof shot?.path === 'string') listedFiles.add(basename(shot.path));
@@ -483,6 +507,7 @@ if (config.outDir) {
       }
     }
   } catch (error) {
+    try { releaseCaptureLock?.(); } catch { /* preserve the preparation error */ }
     process.stderr.write(`error: ${error instanceof UsageError ? error.message : `cannot prepare --out-dir: ${error.message}`}\n`);
     process.exit(EXIT.usage);
   }
@@ -664,7 +689,7 @@ try {
 }
 
 const receiptPath = join(config.outDir, 'receipt.json');
-writeReceiptAtomic(receiptPath, receipt);
+try { writeReceiptAtomic(receiptPath, receipt); } finally { releaseCaptureLock?.(); }
 process.stdout.write(`receipt: ${receiptPath}\nrun_id: ${runId}\nstatus: ${receipt.status}\n`);
 if (receipt.error) process.stderr.write(`error: ${receipt.error}\n`);
 if (receipt.findings.length) process.stderr.write(`${JSON.stringify(receipt.findings, null, 2)}\n`);

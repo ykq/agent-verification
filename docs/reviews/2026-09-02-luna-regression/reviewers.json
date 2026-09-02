@@ -1,0 +1,11 @@
+[
+  {
+    "reviewer": "Luna (regression pass)",
+    "provider": "claude-code subagent (general-purpose, fresh context, read-only on the repo)",
+    "attempt": 1,
+    "exit_state": "completed",
+    "duration_ms": 590696,
+    "artifact_sha256": "f799a9a39c5ed770e7dc5a9c0f79fbed0abd33e98b2d9364ab33118caabc8374",
+    "artifact_commit": "86e73c6 (amended to 5428837 to remove the lab strings this review found)"
+  }
+]

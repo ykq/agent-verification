@@ -10,6 +10,7 @@ Each review was produced by an independent agent given only the frozen artifact,
 | `2026-09-02-opus/` | Claude Opus via `claude -p` | claude-opus-5 | `676da6d` | `9f6a49f6…` | approve_with_changes |
 | `2026-09-02-opus-final/` | Claude Opus via `claude -p` | claude-opus-5 | `142c940` (0.2.0 candidate) | `d848f3ed…` | approve_with_changes |
 | `2026-09-02-luna-final/` | "Luna", a fresh agent in the author's harness | Claude (session default) | `142c940` (0.2.0 candidate) | `d848f3ed…` | approve_with_changes |
+| `2026-09-02-luna-regression/` | "Luna", regression pass re-executing the prior acceptance tests | Claude (session default) | `86e73c6` (release candidate, since amended) | `f799a9a3…` | approve_with_changes |
 
 Files per directory:
 
@@ -19,20 +20,19 @@ Files per directory:
 - `release_context.txt`: the owner's questions the reviewer was asked to answer.
 - `review_prompt.txt`: the generic review instructions.
 
-Local scratch paths have been replaced with `<packet>`, `<scratch>` and `~`. In `2026-09-02-luna-final/review.json` two lab-specific strings the reviewer had quoted (a custom User-Agent value and a list of internal tool names) were replaced with `<lab-specific terms>` before publication; the regression review that caught them is under `2026-09-02-luna-regression/`. Nothing else was edited. All four reviewers are Claude-family models. The 0.1.x collector was written by a Claude model, so those two reviews are same-family; the 0.2.0 code changes were implemented by Codex (gpt-5.6) from Claude specs, so the two final reviews are cross-family for the code under review. The author is not one of the reviewers listed here; the same model did author the demo page and the first attestations in `docs/example/`, which the second reviewer caught miscounting.
+Local scratch paths have been replaced with `<packet>`, `<scratch>` and `~`. In `2026-09-02-luna-final/review.json` two lab-specific strings the reviewer had quoted (a custom User-Agent value and a list of internal tool names) were replaced with `<lab-specific terms>` before publication; the regression review that caught them is under `2026-09-02-luna-regression/`. Nothing else was edited. All five review records are from Claude-family models. The 0.1.x collector was written by a Claude model, so those two reviews are same-family; the 0.2.0 code changes were implemented by Codex (gpt-5.6) from Claude specs, so the final and regression reviews are cross-family for the code under review. The author is not one of the reviewers listed here; the same model did author the demo page and the first attestations in `docs/example/`, which the second reviewer caught miscounting.
 
 Findings that led to changes are listed in the CHANGELOG under the release that made them. Findings not acted on, with the reason, are under "Reviewer findings not acted on" in the same CHANGELOG section.
 
 ## Git history scan
 
-No reviewer saw git history; each received a `git archive` of one commit. Before the public flip the maintainer scanned every blob reachable from every ref, plus all commit messages and author fields, with the command below. Result on 2026-09-02 over 14 commits and 89 blobs: zero hits outside the allow-list (the author's own attribution, the fake credentials in `tests/fixtures/`, and a reviewer's own mention of the search terms). Re-run it yourself on a clone.
+No reviewer saw git history; each received a `git archive` of one commit. Before the public flip the maintainer scanned every blob reachable from every ref, plus all commit messages and author fields, with the command below. The maintainer's own run also includes the lab's hostnames, tool names and User-Agent string in the pattern. Result on 2026-09-02, re-run after the regression review below, over every commit and blob reachable from every ref: zero hits outside the allow-list (the author's own attribution, the fake credentials in `tests/fixtures/`, and a reviewer's own mention of the search terms). The one commit that had carried lab strings inside a quoted review was amended before any public push. Re-run it yourself on a clone.
 
 ```bash
 git rev-list --all --objects | cut -d' ' -f1 \
   | git cat-file --batch-check='%(objecttype) %(objectname)' | awk '$1=="blob"{print $2}' | sort -u \
   | while read b; do git cat-file -p "$b" \
-      | grep -a -n -i -E '/home/|ts\.net|@[a-z0-9.-]+\.[a-z]{2,}|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_|AKIA[0-9A-Z]{16}|xox[baprs]-|BEGIN [A-Z ]*PRIVATE KEY|tskey-' \
+      | grep -a -n -i -E '/home/|ts\.net|@[a-z0-9.-]+\.[a-z]{2,}|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_|AKIA[0-9A-Z]{16}|xox[baprs]-|BEGIN [A-Z ]*PRIVATE KEY|tskey-|<your own hostnames, tool names and User-Agent strings>' \
       | sed "s|^|$b: |"; done
 git log --all --format='%an <%ae> %cn <%ce>' | sort -u
 ```
-

@@ -60,18 +60,21 @@ Then inspect and attest:
 
 ```bash
 node scripts/capture.mjs attest ./.agent-verification/run-1/receipt.json \
-  --path mobile--details--viewport.png --verdict pass --note 'Single column, header 64px, matches spec §3'
+  --path mobile--details--viewport.png --verdict pass --note 'Single column, header 64px, matches spec §3' \
+  --by '<agent or model name>'
 node scripts/capture.mjs check ./.agent-verification/run-1/receipt.json \
   --require 'desktop:Overview,desktop:Details,mobile@390x844:Overview,mobile@390x844:Details'
 ```
 
 `--require` takes the viewport and state pairs that must be present and attested. Name every state the task calls for: `*` means "at least one captured value", so `desktop:*` is satisfied by a capture that dropped every tab but one; `mobile@390x844:Overview` pins the rendered size as well as the label. Once a receipt has been checked with a requirement, later checks enforce the union of everything ever required, and a re-capture into the same out-dir inherits it, so a matrix can be widened but never quietly narrowed. `check` prints a `COVERAGE:` line per satisfied requirement naming the viewport and size that satisfied it. It never relaxes the base rule: every captured screenshot still needs its own attestation. On a read-only receipt the requirement is enforced for that run and a warning says it could not be stored.
 
-Run `node scripts/capture.mjs --help` for every option. Use a fresh `--out-dir` per run: a directory holding a previous receipt is cleared of that run's artifacts (`receipt.json`, `*--*--viewport.png`, `*--*--full.png`, `*--*.aria.yml`) before capture; a non-empty directory with no receipt is refused.
+Run `node scripts/capture.mjs --help` for every option. Use a fresh `--out-dir` per run: a directory holding a previous receipt from this tool has that receipt and the files it lists removed before capture; a non-empty directory with no such receipt is refused.
 
 ## Walkthrough
 
 Everything below is a real run against [`docs/demo/index.html`](docs/demo/index.html), a small orders dashboard with two tabs and one deliberate defect: the summary paragraph is capped at three lines with `overflow: hidden`. On desktop the text fits. On a phone it wraps to eight lines and the cap cuts it mid-sentence. The receipts and PNGs are committed under [`docs/example/`](docs/example/) so you can read them without running anything.
+
+The committed receipts were produced by the 0.2.0 release candidate. The final collector writes `config.user_agent_override` instead of `config.user_agent` and expands the trust note to name structural-finding excerpts; those metadata-only hardening changes do not affect the captured artifacts, findings, attestations, or gate results shown below.
 
 Reproduce it yourself:
 
@@ -253,7 +256,7 @@ node scripts/capture.mjs check docs/example/run-2/receipt.json    # exit 0, "OK 
 node scripts/capture.mjs check docs/example/run-1/receipt.json    # exit 2, the clipped_content finding
 ```
 
-The `out_dir` field records where each run was produced (`/tmp/demo/run-2` here). The transcript above shortens the `shot:` lines, which print absolute paths at capture time.
+The `out_dir` field records where each run was produced (`/tmp/demo/run-2` here). The transcript above shortens the `shot:` lines, which print absolute paths at capture time, and abbreviates the eight-name `UNINSPECTED:` lists.
 
 | Exit | Meaning |
 |---|---|
@@ -277,9 +280,9 @@ Not detected: wrong colors, wrong typography, misalignment, bad hierarchy, wrong
 - `file://` URLs are refused unless `--allow-file` is passed. With it, the page and its iframes/images can read local files through the browser — point it only at fixtures you trust.
 - TLS errors are fatal unless `--insecure`.
 - Chromium's sandbox stays on unless `--no-sandbox` (added automatically when running as root).
-- Console text and failed-request URLs are redacted before they reach the receipt. Removed: credential shapes (`key=`, `Bearer …`, `user:pass@`, GitHub/GitLab/npm/AWS/Google token prefixes, JWTs), the whole query string and fragment, and every URL path segment after the first (the first survives only when it consists of letters and hyphens, which can still be a user or tenant slug, so `/tenants/acme-corp/users/jane.doe` becomes `/tenants/[REDACTED]/[REDACTED]/[REDACTED]`). URLs inside console messages get the same treatment, whatever their scheme. Kept: the hostname and port. `--keep-paths` turns the path rule off. Redaction is best-effort and applies to diagnostics and structural-finding excerpts; accessibility snapshots are page content written verbatim, so a receipt from an internal application is still sensitive. Everything in the receipt is page-controlled text: treat it as data, never as instructions to the agent.
+- Console text and failed-request URLs are redacted before they reach the receipt. Removed: credential shapes (`key=`, `Bearer …`, `user:pass@`, GitHub/GitLab/npm/AWS/Google token prefixes, JWTs), email addresses, common `/home/…`, `/Users/…`, and `C:\\Users\\…` paths, the whole query string and fragment, and every URL path segment after the first (the first survives only when it consists of letters and hyphens, which can still be a user or tenant slug, so `/tenants/acme-corp/users/jane.doe` becomes `/tenants/[REDACTED]/[REDACTED]/[REDACTED]`). URLs inside console messages get the same treatment, whatever their scheme. Kept: the hostname and port. `--keep-paths` turns only the URL path rule off. Redaction is best-effort and applies to diagnostics and structural-finding excerpts; accessibility snapshots are page content written verbatim, so a receipt from an internal application is still sensitive. Everything in the receipt is page-controlled text: treat it as data, never as instructions to the agent.
 - Screenshot and snapshot digests make a receipt tamper-evident, not tamper-proof: `check` re-hashes every PNG and accessibility snapshot, but anyone who can write the receipt can rewrite it. Pair `--by` with your own process controls if provenance matters. Concurrent `attest` calls are serialised with a lock file and written atomically.
-- No User-Agent override by default (`--user-agent` or `AGENT_VERIFICATION_USER_AGENT`); the receipt records only whether one was used, never the string.
+- No User-Agent override by default (`--user-agent` or `AGENT_VERIFICATION_USER_AGENT`). The collector records only whether one was used and scrubs the configured string if page output echoes it; redaction remains best-effort for transformed or partial echoes.
 - Receipts store artifact paths relative to the receipt. Stored verbatim, and therefore absolute if you typed them that way: `out_dir`, a `--chrome` path, and a `--spec` path. Pass `--spec` as a relative path if the receipt will be shared. A run directory can be copied or uploaded and checked elsewhere; the digests travel with it.
 - `--out-dir` is reused only when it already holds a `receipt.json` that validates as this tool's, and then only that receipt and the files it lists are removed; a non-empty directory without one is refused.
 - `agents/openai.yaml` sets `allow_implicit_invocation: false`: Codex will not launch the collector against a URL on its own; the user has to invoke the skill.
@@ -290,7 +293,7 @@ Not detected: wrong colors, wrong typography, misalignment, bad hierarchy, wrong
 npm test
 ```
 
-Twenty-four fixture checks cover: clean and broken pages; legitimate truncation patterns producing no false positives; hidden, inert, duplicate-text and shadow/volatile tabs; realistic secret shapes (`Bearer`, `client_secret`, `user:pass@`, token prefixes) and identifiers in URL path segments never reaching the receipt; `file://` refused by default; usage errors exiting 64 without stack traces; a failed capture leaving a `capture_failed` receipt; lazy images not hanging the run; attestations bound to PNG digests with tampering detected; forged, empty, and under-specified attestations rejected; eight concurrent attestations all retained; edited accessibility snapshots rejected; `check` listing every failing gate; `--require` across exact, wildcard, missing, mixed, repeated, sticky, and malformed inputs; relative paths surviving a copied run directory; stale evidence cleared from a reused out-dir and foreign directories refused. CI runs the same suite on every push.
+Twenty-eight fixture checks cover: clean and broken pages; legitimate truncation patterns producing no false positives; hidden, inert, duplicate-text and shadow/volatile tabs; realistic secret shapes (`Bearer`, `client_secret`, `user:pass@`, token prefixes), email addresses, and identifiers in URL path segments never reaching redacted receipt fields; `file://` refused by default; usage errors exiting 64 without stack traces; a failed capture leaving a `capture_failed` receipt; lazy images not hanging the run; attestations bound to PNG digests with tampering detected; forged, empty, and under-specified attestations rejected; eight concurrent attestations all retained; edited accessibility snapshots rejected; `check` listing every failing gate; `--require` across exact, wildcard, missing, mixed, repeated, sticky, and malformed inputs; relative paths surviving a copied run directory; stale evidence cleared from a reused out-dir and foreign directories refused. CI runs the same suite on every push.
 
 ## Related work
 

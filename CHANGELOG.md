@@ -17,15 +17,16 @@ First public release. Code changes in this release were implemented by Codex (gp
 - The receipt records `user_agent_override: true|false` instead of the User-Agent string.
 - Structural-finding excerpts (`findings[].elements` text, id, class) pass through the same redaction as diagnostics; the receipt's trust note says so.
 - `--out-dir` reuse requires a prior receipt that validates as this tool's, and deletes only the files that receipt lists plus `receipt.json`; anything else in the directory is left alone.
+- Read-only receipt files (not just directories) hit the documented error path instead of being replaced; the configured User-Agent override string, email addresses, common user-directory paths, and malformed URLs are scrubbed wherever redaction applies; malformed stored coverage fails closed; out-dir reuse refuses unreadable coverage and holds the receipt lock through cleanup, capture, and the final write.
 - `agents/openai.yaml`: `allow_implicit_invocation: false`.
-- Docs: walkthrough regenerated under schema 4 with a coverage-narrowing step; review packets committed under `docs/reviews/`.
+- Docs: walkthrough receipts regenerated under schema 4 with a coverage-narrowing step; the final metadata-only redaction hardening is disclosed beside the example; review packets committed under `docs/reviews/`.
 
 ### Reviewer findings not acted on in 0.2.0, and why
 
 - Reject notes that are byte-identical across screenshots (Opus, 676da6d). Not adopted: "Full page identical to viewport" is a legitimate note for a full-page PNG whose content fits the viewport, and it recurs by design. A second inspector, not a string rule, is the answer to lazy notes.
 - Record the browser executable and version in the receipt, and prefer bundled Chromium over a system Chrome (Luna, 2dcc162). Deferred to 0.3: worth doing, but it changes CI's tested path and needs its own audit.
 - Suppress `out_dir` from the receipt (Opus, 142c940). Deferred: documented under Security defaults instead; a flag is planned once there is a second reason to add one.
-- Move the coverage requirement out of the receipt into a task-level policy file (Opus, 142c940). Not adopted for 0.2.0: the requirement now survives out-dir reuse and is documented as per-receipt; CI and harnesses should pass `--require` on every check, which the lab overlay of the author's own setup mandates.
+- Move the coverage requirement out of the receipt into a task-level policy file (Opus, 142c940). Not adopted for 0.2.0: the requirement now survives out-dir reuse and is documented as per-receipt; CI and harnesses should pass `--require` on every check, as the author's own setup does.
 - Make `check` non-mutating (Opus, 142c940). Not adopted: writing the requirement into the receipt is what makes it sticky evidence. `check` now degrades to an in-memory requirement with a warning when the receipt is read-only.
 
 ## 0.1.x (unreleased docs revisions)

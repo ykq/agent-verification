@@ -82,6 +82,10 @@ run 0 "$fx/leak3.html" --allow-file --viewports 'test=400x300' --screenshot-mode
 receipt "$test_root/leak3/receipt.json" '
 serialised = json.dumps(receipt["diagnostics"])
 assert not any(needle in serialised for needle in ["jane.doe", "123-45-6789", "acme-corp", "private-notes", "ssn-"]), serialised
+assert "jane.doe@acme.com" not in serialised, serialised
+assert "http://[::1]:8000/secret/private" not in serialised and "/secret/private" not in serialised, serialised
+assert "/home/alice/private/notes" not in serialised and "C:\\\\Users\\\\Alice" not in serialised, serialised
+assert "[REDACTED-PATH]" in serialised, serialised
 assert "dashboard.acme-internal.example" in serialised, serialised
 assert "/tenants/[REDACTED]" in serialised, serialised'
 run 0 "$fx/leak3.html" --allow-file --keep-paths --viewports 'test=400x300' --screenshot-mode viewport --out-dir "$test_root/leak3-keep"
@@ -94,6 +98,8 @@ receipt "$test_root/leak4/receipt.json" '
 assert any(f["type"] == "clipped_content" for f in receipt["findings"]), receipt["findings"]
 serialised = json.dumps(receipt["findings"])
 assert "sk_live_ABCDEFGH" not in serialised, serialised
+assert "jane.doe@corp.example" not in serialised, serialised
+assert "/Users/alice/private/notes" not in serialised, serialised
 assert "/customers/jane.doe" not in serialised, serialised'
 check "structural finding excerpts redacted"
 
@@ -374,6 +380,20 @@ run 0 "$fx/clean.html" --allow-file --viewports 'new=400x300' --screenshot-mode 
 [ -f "$test_root/reuse-safe/new--page--viewport.png" ] || fail "new artifact missing after safe reuse"
 [ -f "$test_root/reuse-safe/extra--thing--full.png" ] || fail "foreign file was removed during safe reuse"
 [ "$(find "$test_root/reuse-safe" -mindepth 1 -maxdepth 1 | wc -l)" -eq 3 ] || fail "safe reuse left unexpected artifacts"
+before=$(sha256sum "$test_root/reuse-safe/receipt.json")
+touch "$test_root/reuse-safe/receipt.json.lock"
+run 64 "$fx/clean.html" --allow-file --viewports 'blocked=400x300' --screenshot-mode viewport \
+  --no-aria-snapshot --out-dir "$test_root/reuse-safe"
+after=$(sha256sum "$test_root/reuse-safe/receipt.json")
+[ "$before" = "$after" ] || fail "locked reuse changed the prior receipt"
+[ -f "$test_root/reuse-safe/new--page--viewport.png" ] || fail "locked reuse removed prior evidence"
+grep -q 'receipt is locked' "$test_root/stderr" || fail "locked reuse lacked a clean refusal"
+mkdir "$test_root/locked-empty"
+touch "$test_root/locked-empty/receipt.json.lock"
+run 64 "$fx/clean.html" --allow-file --viewports 'blocked=400x300' --screenshot-mode viewport \
+  --no-aria-snapshot --out-dir "$test_root/locked-empty"
+[ ! -e "$test_root/locked-empty/receipt.json" ] || fail "locked empty out-dir received a receipt"
+grep -q 'receipt is locked' "$test_root/stderr" || fail "locked empty out-dir lacked a clean refusal"
 check "out-dir cleanup preserves foreign content and handles safe reuse"
 
 # 20. Attestation identity and substantive notes are enforced at write and check time.
@@ -466,14 +486,57 @@ run 0 check "$test_root/canonical/receipt.json" --require 'desk @800x600:overvie
 receipt "$test_root/canonical/receipt.json" 'assert receipt["required_coverage"] == ["desk:overview", "desk@800x600:overview"], receipt["required_coverage"]'
 
 unset AGENT_VERIFICATION_USER_AGENT
-run 0 "$fx/clean.html" --allow-file --viewports 'test=400x300' --screenshot-mode viewport \
+run 0 "$fx/ua.html" --allow-file --viewports 'test=400x300' --screenshot-mode viewport \
   --user-agent 'Probe/1.0 (someone@example.invalid)' --out-dir "$test_root/user-agent"
 receipt "$test_root/user-agent/receipt.json" '
 assert "someone@example.invalid" not in json.dumps(receipt)
+assert "[USER-AGENT]" in json.dumps(receipt["diagnostics"])
 assert receipt["config"]["user_agent_override"] is True'
 run 0 "$fx/clean.html" --allow-file --viewports 'test=400x300' --screenshot-mode viewport \
   --out-dir "$test_root/no-user-agent"
 receipt "$test_root/no-user-agent/receipt.json" 'assert receipt["config"]["user_agent_override"] is False'
 check "path identity, clean write errors, canonical coverage, and User-Agent privacy"
+
+cp -r "$test_root/req" "$test_root/rof"
+chmod 444 "$test_root/rof/receipt.json"
+run 64 attest "$test_root/rof/receipt.json" --path desk--overview--viewport.png \
+  --verdict pass --note 'read-only receipt file' --by tester
+grep -q 'cannot write receipt' "$test_root/stderr" || fail "read-only receipt file lacked clean write error"
+run 3 check "$test_root/rof/receipt.json" --require tablet:overview
+grep -q 'read-only receipt' "$test_root/stderr" || fail "read-only receipt file lacked check warning"
+[ "$(stat -c %a "$test_root/rof/receipt.json")" = 444 ] || fail "read-only receipt file mode changed"
+chmod 644 "$test_root/rof/receipt.json"
+
+cp -r "$test_root/req" "$test_root/unreadable-coverage"
+python3 - "$test_root/unreadable-coverage/receipt.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path) as handle:
+    receipt = json.load(handle)
+receipt["required_coverage"] = ["desktop:overview", "junk"]
+with open(path, "w") as handle:
+    json.dump(receipt, handle)
+PY
+before=$(sha256sum "$test_root/unreadable-coverage/receipt.json")
+run 64 "$fx/clean.html" --allow-file --viewports 'test=400x300' --screenshot-mode viewport \
+  --out-dir "$test_root/unreadable-coverage"
+after=$(sha256sum "$test_root/unreadable-coverage/receipt.json")
+[ "$before" = "$after" ] || fail "unreadable required coverage changed the prior receipt"
+grep -q 'unreadable required_coverage' "$test_root/stderr" || fail "unreadable required coverage lacked refusal"
+for malformed in null string object; do
+  cp -r "$test_root/req" "$test_root/check-malformed-$malformed"
+  python3 - "$test_root/check-malformed-$malformed/receipt.json" "$malformed" <<'PY'
+import json, sys
+path, kind = sys.argv[1:]
+with open(path) as handle:
+    receipt = json.load(handle)
+receipt["required_coverage"] = {"null": None, "string": "desk:overview", "object": {"desk": "overview"}}[kind]
+with open(path, "w") as handle:
+    json.dump(receipt, handle)
+PY
+  run 64 check "$test_root/check-malformed-$malformed/receipt.json"
+  grep -q 'unreadable required_coverage' "$test_root/stderr" || fail "check accepted malformed required coverage: $malformed"
+done
+check "read-only receipt files, diagnostic redaction, and unreadable carried coverage"
 
 echo "agent-verification: $pass checks passed"
