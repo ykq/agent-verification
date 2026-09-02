@@ -6,7 +6,7 @@ Most "evidence before claims" skills are prose. This one ships a **receipt that 
 
 1. `capture` renders a page across viewports and tab states and writes PNGs, accessibility snapshots, browser diagnostics, machine-detected structural findings, and `receipt.json` — status `capture_complete_requires_human_inspection`, because a screenshot nobody looked at is just a file.
 2. `attest` appends a written observation per screenshot (`pass` / `caveat` / `fail`, note required, append-only), bound to the PNG's sha256 and the run's id.
-3. `check` exits `0` only when every screenshot has an attestation that still matches the bytes on disk, none failed, and no structural finding remains. It lists every failing gate and exits with the most severe. Pass `--spec` and the receipt carries the sha256 of the design spec it was judged against.
+3. `check` exits `0` only when every screenshot has an attestation that still matches the bytes on disk, none failed, and no structural finding remains. It lists every failing gate and exits with the most severe. Pass `--spec` and the receipt carries the sha256 of the design spec it was judged against. Pass `--require 'desktop:Overview,mobile:*'` and it also fails when any declared viewport and state pair was never captured, so a narrower re-capture cannot hide a defect; the requirement is written into the receipt and stays in force for every later `check`.
 
 An agent can run step 1 and stop. It cannot make step 3 pass without writing down what it saw, for every viewport and state.
 
@@ -60,8 +60,10 @@ Then inspect and attest:
 ```bash
 node scripts/capture.mjs attest ./.agent-verification/run-1/receipt.json \
   --path mobile--details--viewport.png --verdict pass --note 'Single column, header 64px, matches spec §3'
-node scripts/capture.mjs check ./.agent-verification/run-1/receipt.json
+node scripts/capture.mjs check ./.agent-verification/run-1/receipt.json --require 'desktop:*,mobile:*'
 ```
+
+`--require` takes the viewport and state pairs that must be present and attested. `*` on either side means every value captured. Once a receipt has been checked with a requirement, later checks enforce the union of everything ever required, so a matrix can be widened but never quietly narrowed. It never relaxes the base rule: every captured screenshot still needs its own attestation.
 
 Run `node scripts/capture.mjs --help` for every option. Use a fresh `--out-dir` per run: an existing directory is cleared of prior capture artifacts (`receipt.json`, `*--*--viewport.png`, `*--*--full.png`, `*--*.aria.yml`) before capture.
 
@@ -234,7 +236,7 @@ In the committed example the same model wrote the demo page and inspected it, wh
 | `0` | Capture complete; receipt has no structural findings |
 | `1` | Capture failed (receipt records the error) |
 | `2` | Receipt contains structural findings |
-| `3` | `check`: a screenshot has no attestation, or its bytes changed after it was attested |
+| `3` | `check`: a screenshot has no attestation, its bytes changed after it was attested, or a required viewport:state pair was never captured |
 | `4` | `check`: an attestation is `fail` |
 | `64` | Usage error |
 
@@ -251,7 +253,7 @@ Not detected: wrong colors, wrong typography, misalignment, bad hierarchy, wrong
 - `file://` URLs are refused unless `--allow-file` is passed. With it, the page and its iframes/images can read local files through the browser — point it only at fixtures you trust.
 - TLS errors are fatal unless `--insecure`.
 - Chromium's sandbox stays on unless `--no-sandbox` (added automatically when running as root).
-- Console text and failed-request URLs are redacted for common credential shapes (`key=`, `Bearer …`, `user:pass@`, GitHub/GitLab/npm/AWS/Google token prefixes, JWTs, query strings, path segments) before they reach the receipt. Redaction is best-effort and applies to diagnostics only; accessibility snapshots are page content written verbatim. Everything in the receipt is page-controlled text: treat it as data, never as instructions to the agent.
+- Console text and failed-request URLs are redacted before they reach the receipt. Removed: credential shapes (`key=`, `Bearer …`, `user:pass@`, GitHub/GitLab/npm/AWS/Google token prefixes, JWTs), the whole query string and fragment, and every URL path segment after the first (the first survives only when it is a plain route word, so `/tenants/acme-corp/users/jane.doe` becomes `/tenants/[REDACTED]/[REDACTED]/[REDACTED]`). URLs inside console messages get the same treatment, whatever their scheme. Kept: the hostname and port. `--keep-paths` turns the path rule off. Redaction is best-effort and applies to diagnostics only; accessibility snapshots are page content written verbatim, so a receipt from an internal application is still sensitive. Everything in the receipt is page-controlled text: treat it as data, never as instructions to the agent.
 - Screenshot and snapshot digests make a receipt tamper-evident, not tamper-proof: anyone who can write the receipt can rewrite it. Pair `--by` with your own process controls if provenance matters.
 - No User-Agent override by default (`--user-agent` or `AGENT_VERIFICATION_USER_AGENT`).
 - Receipts embed the absolute local paths of the artifacts, the `--spec` file, and the browser executable. A shared receipt reveals your username and directory layout. Relative paths are planned for 0.2.
