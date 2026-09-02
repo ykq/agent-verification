@@ -268,8 +268,13 @@ function check(argv) {
     }
   }
   const receipt = readReceipt(receiptPath);
-  if (requiredCoverage.length && JSON.stringify(receipt.required_coverage) !== JSON.stringify(requiredCoverage)) {
-    receipt.required_coverage = requiredCoverage;
+  const storedCoverage = Array.isArray(receipt.required_coverage) ? receipt.required_coverage : [];
+  const enforcedCoverage = [...storedCoverage];
+  for (const requirement of requiredCoverage) {
+    if (!enforcedCoverage.includes(requirement)) enforcedCoverage.push(requirement);
+  }
+  if (enforcedCoverage.length > storedCoverage.length) {
+    receipt.required_coverage = enforcedCoverage;
     writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
   }
   const shots = pngShots(receipt);
@@ -278,7 +283,7 @@ function check(argv) {
   if (receipt.findings.length) problems.push({ code: EXIT.structural_failures, line: `STRUCTURAL FINDINGS: ${receipt.findings.map((f) => `${f.type}@${f.viewport}/${f.state}`).join(', ')}` });
   if (!shots.length && receipt.status !== 'capture_failed') problems.push({ code: EXIT.uninspected, line: 'NO SCREENSHOTS: the receipt records no PNG evidence' });
 
-  for (const requirement of requiredCoverage) {
+  for (const requirement of enforcedCoverage) {
     const [rawViewport, rawState] = requirement.split(':');
     const viewport = rawViewport === '*' ? '*' : slug(rawViewport);
     const state = rawState === '*' ? '*' : slug(rawState);

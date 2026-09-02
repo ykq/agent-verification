@@ -222,4 +222,85 @@ run 64 check "$test_root/required/receipt.json" --require nonsense
 receipt "$test_root/required/receipt.json" 'assert "required_coverage" in receipt, receipt'
 check "required coverage is recorded and gates omitted viewport/state evidence"
 
+# 17. Required coverage supports exact/wildcard combinations and remains sticky.
+run 0 "$fx/tabs.html" --allow-file --tabs 'Overview,Details' --viewports 'desk=800x600,mob=390x844' \
+  --out-dir "$test_root/req"
+for png in "$test_root/req"/*.png; do
+  run 0 attest "$test_root/req/receipt.json" --path "$png" --verdict pass --by tester --note 'Required coverage screenshot inspected'
+done
+run 0 "$fx/tabs.html" --allow-file --tabs 'Overview,Details' --viewports 'desk=800x600,mob=390x844' \
+  --screenshot-mode viewport --no-aria-snapshot --out-dir "$test_root/req-vp"
+for png in "$test_root/req-vp"/*.png; do
+  run 0 attest "$test_root/req-vp/receipt.json" --path "$png" --verdict pass --by tester --note 'Viewport-only screenshot inspected'
+done
+
+cp "$test_root/req/receipt.json" "$test_root/req-exact.json"
+run 0 check "$test_root/req-exact.json" --require desk:Overview,mob:Details
+cp "$test_root/req/receipt.json" "$test_root/req-wild-state.json"
+run 0 check "$test_root/req-wild-state.json" --require 'desk:*'
+cp "$test_root/req/receipt.json" "$test_root/req-wild-vp.json"
+run 0 check "$test_root/req-wild-vp.json" --require '*:Details'
+cp "$test_root/req/receipt.json" "$test_root/req-wild-both.json"
+run 0 check "$test_root/req-wild-both.json" --require '*:*'
+cp "$test_root/req/receipt.json" "$test_root/req-case.json"
+run 0 check "$test_root/req-case.json" --require DESK:overview
+cp "$test_root/req/receipt.json" "$test_root/req-slug.json"
+run 0 check "$test_root/req-slug.json" --require mob:details
+
+cp "$test_root/req/receipt.json" "$test_root/req-missing-vp.json"
+run 3 check "$test_root/req-missing-vp.json" --require tab:Overview
+grep -q 'MISSING COVERAGE: tab:Overview' "$test_root/stderr" || fail "missing viewport was not reported"
+cp "$test_root/req/receipt.json" "$test_root/req-missing-state.json"
+run 3 check "$test_root/req-missing-state.json" --require desk:Settings
+grep -q 'MISSING COVERAGE: desk:Settings' "$test_root/stderr" || fail "missing state was not reported"
+cp "$test_root/req/receipt.json" "$test_root/req-empty-wildcard.json"
+run 3 check "$test_root/req-empty-wildcard.json" --require 'tab:*'
+grep -q 'MISSING COVERAGE: tab:*' "$test_root/stderr" || fail "empty wildcard was not reported"
+
+cp "$test_root/req/receipt.json" "$test_root/req-mixed.json"
+run 3 check "$test_root/req-mixed.json" --require desk:Overview,tab:Overview
+grep -q 'MISSING COVERAGE: tab:Overview' "$test_root/stderr" || fail "mixed missing pair was not reported"
+! grep 'MISSING COVERAGE:' "$test_root/stderr" | grep -q 'desk:Overview' || fail "present pair appeared on a MISSING line"
+
+cp "$test_root/req/receipt.json" "$test_root/req-repeat.json"
+run 0 check "$test_root/req-repeat.json" --require desk:Overview --require mob:Overview
+run 0 check "$test_root/req-repeat.json" --require desk:Overview --require mob:Overview
+receipt "$test_root/req-repeat.json" 'assert receipt["required_coverage"] == ["desk:Overview", "mob:Overview"], receipt["required_coverage"]'
+
+cp "$test_root/req-vp/receipt.json" "$test_root/req-vp-check.json"
+run 0 check "$test_root/req-vp-check.json" --require '*:*'
+
+run 0 "$fx/tabs.html" --allow-file --tabs 'Overview,Details' --viewports 'desk=800x600,mob=390x844' \
+  --out-dir "$test_root/req-partial"
+for png in "$test_root/req-partial"/desk--*.png; do
+  run 0 attest "$test_root/req-partial/receipt.json" --path "$png" --verdict pass --by tester --note 'Desk screenshot inspected successfully'
+done
+# --require never narrows the gate: every captured PNG still needs an attestation.
+run 3 check "$test_root/req-partial/receipt.json" --require 'desk:*'
+grep -q 'UNINSPECTED' "$test_root/stderr" || fail "unattested non-required viewport must still block"
+run 3 check "$test_root/req-partial/receipt.json" --require 'mob:*'
+grep -q 'UNINSPECTED' "$test_root/stderr" || fail "unattested required viewport was not reported"
+! grep -q 'MISSING COVERAGE' "$test_root/stderr" || fail "captured but unattested viewport reported as missing"
+
+cp "$test_root/req/receipt.json" "$test_root/req-malformed.json"
+run 64 check "$test_root/req-malformed.json" --require desk
+run 64 check "$test_root/req-malformed.json" --require ':Overview'
+run 64 check "$test_root/req-malformed.json" --require ''
+
+run 0 attest "$test_root/req-partial/receipt.json" --path "$test_root/req-partial/mob--overview--viewport.png" \
+  --verdict fail --by tester --note 'Mobile overview visibly fails review'
+run 4 check "$test_root/req-partial/receipt.json" --require 'mob:*'
+grep -q 'FAILED ATTESTATIONS' "$test_root/stderr" || fail "failed attestation was not reported"
+grep -q 'UNINSPECTED' "$test_root/stderr" || fail "uninspected evidence was not reported alongside failure"
+
+cp "$test_root/req/receipt.json" "$test_root/req-sticky.json"
+run 0 check "$test_root/req-sticky.json" --require desk:Overview,mob:Overview
+run 0 check "$test_root/req-sticky.json"
+run 3 check "$test_root/req-sticky.json" --require tab:Overview
+grep -q 'MISSING COVERAGE: tab:Overview' "$test_root/stderr" || fail "new sticky requirement was not reported"
+run 3 check "$test_root/req-sticky.json"
+grep -q 'MISSING COVERAGE: tab:Overview' "$test_root/stderr" || fail "stored requirement was not enforced"
+receipt "$test_root/req-sticky.json" 'assert receipt["required_coverage"] == ["desk:Overview", "mob:Overview", "tab:Overview"], receipt["required_coverage"]'
+check "coverage requirement combinations"
+
 echo "agent-verification: $pass checks passed"
