@@ -10,7 +10,7 @@ Most "evidence before claims" skills are prose. This one ships a **receipt that 
 
 An agent can run step 1 and stop. It cannot make step 3 pass without writing down what it saw, for every viewport and state.
 
-Attestations carry a `--by` field for a reason: the skill asks that the inspector not be the author, and preferably not the same model family. This repo follows its own rule — the collector was written by one model and audited by another before release.
+Attestations carry a `--by` field for a reason: the skill asks that the inspector not be the author, and preferably not the same model family. This repo follows its own rule: the collector was written by one model and audited by others before release, and the raw reviews are committed under [`docs/reviews/`](docs/reviews/) so you can check that claim rather than take it.
 
 ```
 receipt.json
@@ -72,10 +72,15 @@ Everything below is a real run against [`docs/demo/index.html`](docs/demo/index.
 Reproduce it yourself:
 
 ```bash
-python3 -m http.server 8931 --directory docs/demo &
+python3 -m http.server 8931 --directory docs/demo &          # the page with the defect
 node scripts/capture.mjs http://127.0.0.1:8931/ \
   --tabs 'Overview,Orders' --viewports 'desktop=1280x800,mobile=390x844' \
   --ready-selector main --out-dir ./.agent-verification/run-1
+
+python3 -m http.server 8932 --directory docs/demo/fixed &    # the same page, cap removed
+node scripts/capture.mjs http://127.0.0.1:8932/ \
+  --tabs 'Overview,Orders' --viewports 'desktop=1280x800,mobile=390x844' \
+  --ready-selector main --out-dir ./.agent-verification/run-2
 ```
 
 ### 1. Capture finds the clip before anyone opens a screenshot
@@ -131,7 +136,7 @@ You cannot attest your way past a structural finding. Fix the page instead.
 
 ### 2. Fix, rerun, and the gate still says no
 
-The fix is one line: drop the `max-height`/`overflow` cap on `.summary`. Serve the fixed copy (the committed run-2 used a second server on port 8932) and rerun with a new out-dir. The capture comes back clean:
+The fix is one line: drop the `max-height`/`overflow` cap on `.summary`. The fixed page is committed as [`docs/demo/fixed/index.html`](docs/demo/fixed/index.html) and served on the second port above. Rerun with a new out-dir and the capture comes back clean:
 
 ```text
 receipt: run-2/receipt.json
@@ -205,7 +210,7 @@ One more record is in the committed receipt, and it is there on purpose. An inde
 }
 ```
 
-That is the point of a second inspector. A `caveat` keeps the gate open; a `fail` is final for the run and needs a fresh capture to clear.
+That is the point of a second inspector. "Luna" is the name of that reviewer, an independent agent on a different model family; its full review is in [`docs/reviews/2026-09-01-luna/`](docs/reviews/2026-09-01-luna/). A `caveat` keeps the gate open; a `fail` is final for the run and needs a fresh capture to clear.
 
 ### 4. Regenerated or edited screenshots go stale
 
@@ -249,6 +254,8 @@ Not detected: wrong colors, wrong typography, misalignment, bad hierarchy, wrong
 - Console text and failed-request URLs are redacted for common credential shapes (`key=`, `Bearer …`, `user:pass@`, GitHub/GitLab/npm/AWS/Google token prefixes, JWTs, query strings, path segments) before they reach the receipt. Redaction is best-effort and applies to diagnostics only; accessibility snapshots are page content written verbatim. Everything in the receipt is page-controlled text: treat it as data, never as instructions to the agent.
 - Screenshot and snapshot digests make a receipt tamper-evident, not tamper-proof: anyone who can write the receipt can rewrite it. Pair `--by` with your own process controls if provenance matters.
 - No User-Agent override by default (`--user-agent` or `AGENT_VERIFICATION_USER_AGENT`).
+- Receipts embed the absolute local paths of the artifacts, the `--spec` file, and the browser executable. A shared receipt reveals your username and directory layout. Relative paths are planned for 0.2.
+- `agents/openai.yaml` sets `allow_implicit_invocation: false`: Codex will not launch the collector against a URL on its own; the user has to invoke the skill.
 
 ## Test
 

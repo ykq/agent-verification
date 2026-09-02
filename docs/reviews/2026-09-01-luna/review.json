@@ -1,0 +1,109 @@
+{
+  "artifact_sha256": "15ad805268c8db22da73e55565d1fecb4c96dacda94b35eeae21c7f46627e345",
+  "verdict": "approve_with_changes",
+  "findings": [
+    {
+      "severity": "medium",
+      "location": "package.json engines (\"node\": \">=18\"), README.md 'Install' + SKILL.md frontmatter `compatibility: ... Node.js 18+` vs package-lock.json (playwright 1.62.1, whose package.json declares engines node >=20)",
+      "failure_mode": "OBSERVED: the lockfile pins playwright 1.62.1 and node_modules/playwright/package.json and playwright-core/package.json both declare `engines.node >= 20`, while the repo advertises Node 18+. A first-time user on Node 18 following the README gets EBADENGINE warnings from `npm run setup` and an unsupported Playwright runtime; the first public issue filed will be 'does not work on the Node version you say you support'.",
+      "amendment": "Set package.json `engines.node` to `>=20` and change 'Node.js 18+' to 'Node.js 20+' in README.md and SKILL.md `compatibility`; CI already uses node 20 so no workflow change is needed.",
+      "mechanical_test": "grep -q '\"node\": \">=20\"' package.json && ! grep -rn 'Node.js 18' README.md SKILL.md && node -e \"const l=require('./package-lock.json');const v=l.packages['node_modules/playwright'].version;console.log(v)\" prints a version whose node_modules/playwright/package.json engines.node is satisfied by package.json engines.node."
+    },
+    {
+      "severity": "medium",
+      "location": "scripts/capture.mjs lines 450-458 (screenshots[].path = join(config.outDir,...) absolute), line 310 (spec.path = resolve(value)), line 322 (config.chrome), lines 222-235 attest, lines 253-260 check; docs/example/run-1/receipt.json and run-2/receipt.json (paths `/tmp/demo/...`)",
+      "failure_mode": "OBSERVED: every receipt stores absolute filesystem paths for PNGs, snapshots, the --spec file, and --chrome. On a user's machine that is `/home/<username>/project/...` — the receipt users are told to share (README 'The report an agent hands back should quote the run_id, the check result, and the attestation notes') leaks the OS username and directory layout. Second consequence, OBSERVED: `check` verifies bytes at the recorded absolute path, not next to the receipt: I copied a run directory elsewhere and `check` on the copy still exited 0 because it hashed the ORIGINAL files; the committed docs/example receipts cannot be `check`ed at all (paths point at /tmp/demo, which the README has to apologise for). A receipt shipped to another machine or reviewer is therefore un-checkable, and tampering the shipped copy is undetectable while the original exists.",
+      "amendment": "Record `path` relative to the receipt's directory (e.g. `desktop--overview--viewport.png`) in capture; in attest/check resolve `join(dirname(receiptPath), shot.path)` when the stored path is relative (keep accepting absolute paths for old receipts). Store `spec.path` as given by the user rather than resolved, and store `chrome` only when explicitly passed. Regenerate docs/example receipts so they contain relative paths, and delete the README sentence excusing `/tmp/demo`.",
+      "mechanical_test": "After a capture into `./.agent-verification/x`, `grep -c '\"path\": \"/' .agent-verification/x/receipt.json` prints 0; `cp -r .agent-verification/x /some/other/dir && node scripts/capture.mjs check /some/other/dir/x/receipt.json` reports UNINSPECTED/OK for the copied files (and a byte-appended PNG in the copy yields STALE ATTESTATION, exit 3); `node scripts/capture.mjs check docs/example/run-2/receipt.json` exits 0 in a fresh clone."
+    },
+    {
+      "severity": "medium",
+      "location": "docs/example/run-2/receipt.json inspections[4].note ('summary shows all 7 lines'), README.md walkthrough step 3 ('all seven lines visible', 'summary shows all 7 lines') and docs/demo/index.html CSS comment ('wraps to six lines')",
+      "failure_mode": "OBSERVED: I opened docs/example/run-2/mobile--overview--viewport.png; the summary paragraph renders in EIGHT lines (ending 'outlet pricing.'). The committed attestation says seven, the README says seven, and the demo's own source comment says six. For a project whose entire pitch is 'someone actually looked at the screenshot', the flagship example attestation containing a miscount is the kind of thing a first public reader will spot and quote.",
+      "amendment": "Count the lines in the PNG and make all three sources agree (eight, at 390px with the default system-ui font as rendered), or reword to a claim that does not depend on font metrics ('summary fully visible, ending \"outlet pricing.\"'). Because attestations are append-only, either re-run the walkthrough into a fresh run-2 with a corrected note or append a `caveat` record correcting the count rather than editing the existing one.",
+      "mechanical_test": "grep -rn 'seven lines\\|7 lines\\|six lines' README.md docs/demo/index.html docs/example/run-2/receipt.json returns no lines, or returns lines whose number matches a stated line-count in a reviewer-signed note; and `python3 -c \"import json;r=json.load(open('docs/example/run-2/receipt.json'));print(len(r['inspections']))\"` shows the correction was appended, not edited (count > 8 or a fresh run_id)."
+    },
+    {
+      "severity": "medium",
+      "location": "scripts/capture.mjs browserPath() lines 146-150 and receipt.config.chrome (line 322); .github/workflows/test.yml (runs `npx playwright install --with-deps chromium` then tests on ubuntu-latest); README.md 'Install'",
+      "failure_mode": "The collector silently prefers /usr/bin/google-chrome*, /usr/bin/chromium, /usr/bin/chromium-browser over the Playwright-bundled Chromium that `npm run setup` just installed, and records `chrome: null` in the receipt when it did so (OBSERVED in my run-1 receipt and in the committed examples, which were produced with /usr/bin/google-chrome present). Consequences: (a) receipts do not say which browser/version rendered the evidence, so runs are not reproducible or comparable across machines; (b) INFERENCE: on Ubuntu, /usr/bin/chromium-browser is commonly a snap wrapper that Playwright cannot drive, so a user who ran `npm run setup` correctly still gets `browserType.launch` failures; (c) GitHub's ubuntu-latest image ships google-chrome, so CI is exercising system Chrome, not the bundled Chromium the README tells users to install — the tested path and the documented path differ. This is an assumption that holds on the owner's machine (google-chrome present) more than in general.",
+      "amendment": "Use the bundled Playwright Chromium by default and only use a system browser when `--chrome`/`CHROME_BIN` is given (or, at minimum, keep the auto-detect but record the resolved executable and `browser.version()` in receipt.config as `browser: { executable, version }`). Update the README sentence accordingly.",
+      "mechanical_test": "After capture, `python3 -c \"import json;c=json.load(open('receipt.json'))['config'];assert c['browser']['version'] and c['browser']['executable']\"` passes; with CHROME_BIN unset and /usr/bin/google-chrome present, the recorded executable is under the Playwright cache directory (or, if auto-detect is kept, the recorded executable is the system path — either way non-null)."
+    },
+    {
+      "severity": "low",
+      "location": "README.md 'Security defaults' bullet 'Screenshot and snapshot digests make a receipt tamper-evident' vs scripts/capture.mjs check() lines 245-260 (pngShots() filters to kind viewport/full only; accessibility_snapshot entries are never re-hashed)",
+      "failure_mode": "OBSERVED: after all 8 attestations passed, I appended a line to mobile--overview.aria.yml and `check` still exited 0. The README claims snapshot digests contribute to tamper-evidence; `check` never verifies them, so a doctored accessibility snapshot (which the SKILL tells the agent to read as evidence) is accepted silently.",
+      "amendment": "In check(), also hash every `accessibility_snapshot` entry and emit `STALE SNAPSHOT: <path> (bytes changed since capture)` with exit code 3 when it differs or is missing; or, if snapshots are meant to be advisory, change the README sentence to 'Screenshot digests ... snapshots carry a digest for reference but are not verified by check'.",
+      "mechanical_test": "Add to tests/test_capture.sh after test 10b: `printf '\\n#x\\n' >> \"$test_root/digest/test--page.aria.yml\"; run 3 check \"$test_root/digest/receipt.json\"; grep -q 'STALE SNAPSHOT' \"$test_root/stderr\"`; `npm test` passes."
+    },
+    {
+      "severity": "low",
+      "location": "scripts/capture.mjs attest() line 214 (note >= 10 chars) vs check() line 245 (accepts any non-empty note)",
+      "failure_mode": "OBSERVED: I wrote inspections directly into a fresh receipt with note 'x' and by 'forger' and `check` printed 'OK: every screenshot inspected' and exited 0. Forgery is acknowledged in the README, but check's validity rule is looser than attest's, so a hand-written receipt passes a bar the CLI itself refuses — the two code paths disagree on what a valid attestation is.",
+      "amendment": "Factor the note rule into one function (`validNote = (n) => typeof n === 'string' && n.trim().length >= 10`) used by both attest() and the `invalid` filter in check(), so check reports `INVALID ATTESTATIONS` (exit 4) for sub-10-character notes.",
+      "mechanical_test": "Append to tests: forge a receipt copy with one inspection note 'x' and `run 4 check` on it; grep 'INVALID ATTESTATIONS' in stderr; `npm test` passes."
+    },
+    {
+      "severity": "low",
+      "location": "SKILL.md 'Visual mode' sentence 'Attestations are append-only; a changed opinion is a new record, not an edit' vs scripts/capture.mjs check() line 265 (any record with verdict fail and matching run_id fails the gate)",
+      "failure_mode": "OBSERVED: attest fail then attest pass on the same PNG → check exit 4 with FAILED ATTESTATIONS. The behaviour is correctly fail-closed, but the SKILL wording implies a later record supersedes an earlier one. An agent following the text will append a `pass` after a mistaken `fail`, get exit 4, and either be confused or start editing the JSON by hand (which the doc says never to do).",
+      "amendment": "Change the sentence to: 'Attestations are append-only and a `fail` is final for that run: to clear it, fix the page and re-run capture into a new run_id; append a `caveat` if you only want to add context.'",
+      "mechanical_test": "grep -n 'fail.*is final\\|final for that run' SKILL.md returns a match; existing test 10 (fail after pass → exit 4) still passes under `npm test`."
+    },
+    {
+      "severity": "low",
+      "location": "scripts/capture.mjs USAGE (lines 24-59) vs parseArgs line 90 (`--tab` singular accepted) and loadPlaywright line 134 (`PLAYWRIGHT_PATH`); README.md says 'Run --help for every option'",
+      "failure_mode": "OBSERVED: `--help` output contains zero occurrences of `--tab ` (singular) though the flag is accepted, and does not mention `PLAYWRIGHT_PATH` although README and the test script rely on it. SKILL.md instructs agents to 'run --help first; do not read the script source', so an undocumented flag/env is invisible to the intended audience.",
+      "amendment": "Add `--tab TEXT  (repeatable; same as --tabs with one label)` and an `Environment: CHROME_BIN, AGENT_VERIFICATION_USER_AGENT, PLAYWRIGHT_PATH` block to USAGE, and extend test 9 to grep for them.",
+      "mechanical_test": "`node scripts/capture.mjs --help | grep -q -- '--tab ' && node scripts/capture.mjs --help | grep -q PLAYWRIGHT_PATH` exits 0; test 9 in tests/test_capture.sh asserts both."
+    },
+    {
+      "severity": "low",
+      "location": "scripts/capture.mjs lines 293-304 (out-dir cleanup deletes `receipt.json` and any `*--*--{viewport,full}.png` / `*--*.aria.yml` in an existing directory); README.md and --help do not mention the deletion",
+      "failure_mode": "OBSERVED: with `--out-dir` pointing at a pre-existing directory containing a stray `receipt.json` and `foo--bar--viewport.png`, both were deleted before capture (unrelated `keep.txt` survived). The pattern is narrow, but `--out-dir .` or `--out-dir ~` in a project that happens to have its own `receipt.json` destroys it with no prompt and no mention in docs. Not a lab leftover; a surprising default for a public tool.",
+      "amendment": "Document in --help and README: '--out-dir is cleared of prior capture artifacts (receipt.json, *--*--viewport.png, *--*--full.png, *--*.aria.yml) before each run; use a fresh directory per run.' Optionally refuse to clean a directory whose receipt.json is not schema_version 3 (i.e. not ours).",
+      "mechanical_test": "`node scripts/capture.mjs --help | grep -qi 'cleared\\|removed'` exits 0; README grep for the same sentence succeeds; existing test 15 still passes."
+    },
+    {
+      "severity": "low",
+      "location": ".github/workflows/test.yml (`npm install`, `actions/checkout@v4`, `actions/setup-node@v4`)",
+      "failure_mode": "CI uses `npm install` rather than `npm ci`, so a lockfile/package.json drift is silently repaired instead of failing, and actions are pinned by major tag rather than commit SHA. Neither is a leak, but for a public repo whose selling point is reproducible evidence, CI not enforcing the lockfile is an easy first-issue.",
+      "amendment": "Change `npm install` to `npm ci` in the workflow; optionally pin actions to full-length SHAs with a version comment.",
+      "mechanical_test": "grep -q 'run: npm ci' .github/workflows/test.yml && ! grep -q 'run: npm install' .github/workflows/test.yml; the workflow passes on the next push."
+    },
+    {
+      "severity": "low",
+      "location": "README.md walkthrough ('python3 -m http.server 8931' for both runs) vs docs/example/run-2/receipt.json (`\"url\": \"http://127.0.0.1:8932/\"`)",
+      "failure_mode": "OBSERVED: the committed run-2 receipt was captured from port 8932 while the README's reproduce-it-yourself instructions only ever mention 8931. Harmless, but a reader comparing the committed receipt to the transcript sees an unexplained difference in the very field that identifies what was captured.",
+      "amendment": "Either add one line to step 2 ('the fixed copy was served on 8932') or regenerate run-2 from 8931 when regenerating for the relative-path change.",
+      "mechanical_test": "`grep -o 'http://127.0.0.1:[0-9]*/' docs/example/run-2/receipt.json` returns a port that appears in README.md."
+    },
+    {
+      "severity": "low",
+      "location": "scripts/capture.mjs attest() lines 221-235 (read-modify-write of receipt.json with no lock or rename)",
+      "failure_mode": "INFERENCE (not executed): two concurrent `attest` invocations on the same receipt (e.g. an agent parallelising eight attestations) each read the file, push one record, and write; the second write discards the first record, so a screenshot attested in good faith shows as UNINSPECTED. Append-only in name, lost-update in practice under concurrency. The SKILL does not say to attest serially.",
+      "amendment": "Write to a temp file in the same directory and `renameSync` over receipt.json, and add one sentence to SKILL.md/--help: 'run attest calls sequentially; the receipt is a single file.' A proper lock is not needed for the documented workflow.",
+      "mechanical_test": "Shell test: launch 8 `attest` processes in parallel with `&` on one receipt, `wait`, then `python3 -c` asserts `len(inspections) == 8` (currently expected to fail intermittently; passes after the serialisation note is followed, or deterministically if a lock/rename-with-retry is added)."
+    }
+  ],
+  "minimal_amendments": [
+    "package.json engines.node '>=20'; README.md and SKILL.md 'Node.js 20+' (matches locked Playwright 1.62.1).",
+    "Store receipt paths relative to the receipt directory; resolve them in attest/check relative to dirname(receipt); regenerate docs/example receipts so `check docs/example/run-2/receipt.json` works in a fresh clone; drop the README '/tmp/demo' apology.",
+    "Fix the line-count discrepancy (PNG shows 8 lines; attestation/README say 7; demo comment says 6) by appending a correcting record or regenerating run-2, and align README + docs/demo/index.html comment.",
+    "Record the browser actually used (executable + browser.version()) in receipt.config; prefer the bundled Chromium unless --chrome/CHROME_BIN is set, or document that system Chrome wins.",
+    "check(): verify accessibility_snapshot digests (STALE SNAPSHOT, exit 3) or reword the README tamper-evidence sentence; apply attest's 10-char note rule inside check's validity filter.",
+    "SKILL.md: state that a `fail` attestation is final for the run and requires a fresh capture.",
+    "USAGE: document `--tab`, PLAYWRIGHT_PATH, CHROME_BIN, AGENT_VERIFICATION_USER_AGENT, and the out-dir cleanup behaviour; extend test 9.",
+    "CI: `npm ci` instead of `npm install`.",
+    "README: mention port 8932 for run-2 or regenerate from 8931."
+  ],
+  "owner_questions": [
+    "Git history was NOT in the packet; your own history grep for secrets and lab strings is unverified by me. Given the CHANGELOG mentions a pre-release audit and a master→main rename, do you want an independent `git log -p | grep` for emails/hostnames/*.ts.net//home/ run on the actual repo before the flip, or are you comfortable flipping on your own grep?",
+    "Is the design intent that a `fail` attestation can never be superseded within a run (current behaviour, arguably the right fail-closed choice), or should a later record from the same `--by` be allowed to supersede? Your choice changes the SKILL wording, not just the code.",
+    "Do you want `check` to be usable on receipts moved to another machine (reviewer hand-off, CI artifact upload)? If yes, the relative-path amendment is required rather than optional; if receipts are strictly local, documenting the limitation is enough.",
+    "The committed example attestations are signed `claude-fable-5-1` and the README says the same model wrote and inspected the demo. Are you comfortable that a public reader's first concrete attestation example is the pattern the skill says not to use, or would you rather have a second model family append its own attestations to run-2 before the flip (also fixing the line-count note)?",
+    "package.json is `\"private\": true` and there is no npm publish path; the README install is clone + copy. Is that intentional for v0.1.0, or do you want an npx/npm story before public release (affects whether `private` should be dropped)?",
+    "Do you want a SECURITY.md / contact for reporting redaction bypasses? The README explicitly says redaction is best-effort; a public repo with that caveat and no reporting channel invites drive-by issues instead of private reports."
+  ]
+}

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orders dashboard — demo</title>
+<style>
+  :root { --ink:#1b1f24; --muted:#5b6470; --line:#e2e6ea; --accent:#2f6fed; --bg:#f7f8fa; }
+  * { box-sizing:border-box }
+  body { margin:0; font:15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; color:var(--ink); background:var(--bg) }
+  header { display:flex; align-items:center; gap:16px; padding:16px 24px; background:#fff; border-bottom:1px solid var(--line) }
+  header h1 { font-size:18px; margin:0 }
+  header .env { margin-left:auto; font-size:12px; color:var(--muted); border:1px solid var(--line); border-radius:999px; padding:2px 10px }
+  nav { display:flex; gap:4px; padding:12px 24px 0; background:#fff; border-bottom:1px solid var(--line) }
+  nav [role=tab] { background:none; border:0; border-bottom:2px solid transparent; padding:8px 12px; font:inherit; color:var(--muted); cursor:pointer }
+  nav [role=tab][aria-selected=true] { color:var(--accent); border-bottom-color:var(--accent); font-weight:600 }
+  main { padding:24px; max-width:1100px; margin:0 auto }
+  .view { display:none } .view.active { display:block }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:20px }
+  .tile { background:#fff; border:1px solid var(--line); border-radius:8px; padding:14px 16px }
+  .tile .label { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em }
+  .tile .value { font-size:26px; font-weight:600; margin-top:2px }
+  .tile .delta { font-size:12px; color:#1a7f37 }
+  .card { background:#fff; border:1px solid var(--line); border-radius:8px; padding:16px 18px; margin-bottom:16px }
+  .card h2 { font-size:15px; margin:0 0 8px }
+  /* Fixed copy of ../index.html: the .summary cap is removed. Used for run-2 in the README walkthrough.
+     The original defect comment is in ../index.html. */
+  .summary { color:var(--muted) }
+  table { width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--line); border-radius:8px }
+  th, td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); font-size:14px }
+  th { color:var(--muted); font-weight:500 }
+  tr:last-child td { border-bottom:0 }
+  .ok { color:#1a7f37 } .warn { color:#b35900 }
+  @media (max-width: 600px) { main { padding:16px } .tiles { grid-template-columns:1fr 1fr } }
+</style>
+<header><h1>Orders</h1><span class="env">staging</span></header>
+<nav>
+  <button role="tab" aria-selected="true">Overview</button>
+  <button role="tab" aria-selected="false">Orders</button>
+</nav>
+<main>
+  <section class="view active" data-name="Overview">
+    <div class="tiles">
+      <div class="tile"><div class="label">Orders today</div><div class="value">1,284</div><div class="delta">+6.2% vs yesterday</div></div>
+      <div class="tile"><div class="label">Revenue</div><div class="value">$48,910</div><div class="delta">+3.9%</div></div>
+      <div class="tile"><div class="label">Refunds</div><div class="value">17</div><div class="delta">−2</div></div>
+      <div class="tile"><div class="label">Avg. fulfilment</div><div class="value">2h 14m</div><div class="delta">−11m</div></div>
+    </div>
+    <div class="card">
+      <h2>Summary</h2>
+      <p class="summary">Order volume is tracking 6% above yesterday, driven by the spring catalogue launch. Fulfilment time improved after the second packing station came online at 09:00. Seventeen refunds were issued, all for the discontinued 40L tote; the listing has been pulled and remaining inventory moved to outlet pricing.</p>
+    </div>
+    <div class="card"><h2>Alerts</h2><p>No open alerts. Last incident closed 3 days ago.</p></div>
+  </section>
+  <section class="view" data-name="Orders">
+    <table>
+      <thead><tr><th>Order</th><th>Customer</th><th>Total</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>#10482</td><td>M. Okafor</td><td>$142.00</td><td class="ok">Shipped</td></tr>
+        <tr><td>#10481</td><td>L. Brandt</td><td>$38.50</td><td class="ok">Shipped</td></tr>
+        <tr><td>#10480</td><td>S. Ito</td><td>$611.20</td><td class="warn">Awaiting stock</td></tr>
+        <tr><td>#10479</td><td>R. Alvarez</td><td>$27.00</td><td class="ok">Delivered</td></tr>
+        <tr><td>#10478</td><td>P. Nkemelu</td><td>$219.99</td><td class="ok">Delivered</td></tr>
+      </tbody>
+    </table>
+  </section>
+</main>
+<script>
+  document.querySelectorAll('[role=tab]').forEach((tab) => tab.addEventListener('click', () => {
+    const name = tab.textContent.trim();
+    document.querySelectorAll('.view').forEach((v) => v.classList.toggle('active', v.dataset.name === name));
+    document.querySelectorAll('[role=tab]').forEach((t) => t.setAttribute('aria-selected', String(t === tab)));
+  }));
+</script>
+</html>

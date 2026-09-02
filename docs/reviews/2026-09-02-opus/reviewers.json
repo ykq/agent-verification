@@ -1,0 +1,16 @@
+[
+  {
+    "reviewer": "Opus",
+    "provider": "claude -p",
+    "requested_model": "opus",
+    "concrete_model": "claude-opus-5",
+    "effort": "high",
+    "allowed_tools": "Read,Bash (Bash added beyond the skill's Read-only default so the reviewer could verify by execution; same no-edit rules as the Luna lane)",
+    "attempt": 1,
+    "exit_state": "completed exit 0",
+    "response_path": "<packet>/opus.review.json",
+    "artifact_sha256": "9f6a49f6748cfc90609ed397f3714fb47c2476169549832e9a6c74623ecc58a8",
+    "artifact_commit": "676da6d",
+    "note": "Luna reviewed the prior commit 2dcc162 (packet 15ad8052...); Opus was not shown her findings."
+  }
+]
