@@ -5,6 +5,7 @@
 - README walkthrough with a real run: demo dashboard under `docs/demo/`, committed receipts and screenshots under `docs/example/`, covering a caught `clipped_content` defect, the fix, attestation, and stale-attestation detection.
 - CI: `GITHUB_TOKEN` restricted to `contents: read`.
 - Default branch renamed `master` → `main`.
+- Pre-release audit (Luna) docs fixes: Node.js 20+ stated everywhere (the locked Playwright requires it); CI uses `npm ci`; `--help` documents `--tab`, the environment variables, and the out-dir cleanup; SKILL.md states that a `fail` attestation is final for its run; the example run-2 receipt carries an appended correction (summary renders in 8 lines, not 7) and the README shows it.
 
 ## 0.1.0
 

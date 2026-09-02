@@ -27,10 +27,13 @@ const USAGE = `Usage: capture.mjs <URL> [options]
 
 Evidence:
   --tabs TEXT,...              Click visible tab/nav labels (exact text, case-insensitive; repeatable)
+  --tab TEXT                   Same as --tabs with one label (repeatable)
   --viewports NAME=WxH,...     Default: desktop=1440x1000,mobile=390x844
   --screenshot-mode MODE       viewport, full, or both (default: both)
   --no-aria-snapshot           Skip accessibility snapshots
-  --out-dir PATH               Default: a fresh directory under the OS temp dir
+  --out-dir PATH               Default: a fresh directory under the OS temp dir. An existing directory is
+                               cleared of prior capture artifacts (receipt.json, *--*--viewport.png,
+                               *--*--full.png, *--*.aria.yml) first; use a fresh directory per run
   --spec PATH                  Acceptance spec / design system file; its sha256 is recorded
 
 Structural checks:
@@ -53,6 +56,9 @@ Security (all off by default):
 Inspection (the receipt fails closed until every screenshot is attested):
   attest                       Append an inspection record bound to the PNG's sha256; --note required
   check                        Report every gate failure; exit with the most severe
+
+Environment: CHROME_BIN (browser executable), AGENT_VERIFICATION_USER_AGENT (User-Agent override),
+             PLAYWRIGHT_PATH (project directory whose node_modules holds playwright)
 
 Exit codes: 0 ok, 1 capture failed, 2 structural findings, 3 uninspected or stale attestation,
             4 failed attestation, 64 usage error. Exit 0 from capture never means the page looks right.

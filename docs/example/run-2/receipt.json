@@ -276,6 +276,17 @@
       "note": "Full page identical to viewport",
       "by": "claude-fable-5-1",
       "at": "2026-09-01T23:34:44.412Z"
+    },
+    {
+      "path": "/tmp/demo/run-2/mobile--overview--viewport.png",
+      "sha256": "4788d4734a7f50aebf18ed8807833c8d16aa4a08eed4f0c4271e4f9cb95c9851",
+      "run_id": "20260901233439-bd266e",
+      "viewport": "mobile",
+      "state": "Overview",
+      "verdict": "caveat",
+      "note": "Correction: the summary renders in 8 lines, not 7 as my earlier note said. Still fully visible, ending \"outlet pricing.\" Miscount caught by an independent reviewer (Luna).",
+      "by": "claude-fable-5-1",
+      "at": "2026-09-02T01:05:01.217Z"
     }
   ]
 }

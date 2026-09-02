@@ -33,7 +33,7 @@ receipt.json
 
 ```bash
 git clone https://github.com/ykq/agent-verification
-cd agent-verification && npm run setup     # installs Playwright + Chromium
+cd agent-verification && npm run setup     # installs Playwright + Chromium (Node.js 20+)
 cp -r . ~/.claude/skills/agent-verification  # or your runtime's skills directory
 ```
 
@@ -63,11 +63,11 @@ node scripts/capture.mjs attest ./.agent-verification/run-1/receipt.json \
 node scripts/capture.mjs check ./.agent-verification/run-1/receipt.json
 ```
 
-Run `node scripts/capture.mjs --help` for every option.
+Run `node scripts/capture.mjs --help` for every option. Use a fresh `--out-dir` per run: an existing directory is cleared of prior capture artifacts (`receipt.json`, `*--*--viewport.png`, `*--*--full.png`, `*--*.aria.yml`) before capture.
 
 ## Walkthrough
 
-Everything below is a real run against [`docs/demo/index.html`](docs/demo/index.html), a small orders dashboard with two tabs and one deliberate defect: the summary paragraph is capped at three lines with `overflow: hidden`. On desktop the text fits. On a phone it wraps to seven lines and the cap cuts it mid-sentence. The receipts and PNGs are committed under [`docs/example/`](docs/example/) so you can read them without running anything.
+Everything below is a real run against [`docs/demo/index.html`](docs/demo/index.html), a small orders dashboard with two tabs and one deliberate defect: the summary paragraph is capped at three lines with `overflow: hidden`. On desktop the text fits. On a phone it wraps to eight lines and the cap cuts it mid-sentence. The receipts and PNGs are committed under [`docs/example/`](docs/example/) so you can read them without running anything.
 
 Reproduce it yourself:
 
@@ -131,7 +131,7 @@ You cannot attest your way past a structural finding. Fix the page instead.
 
 ### 2. Fix, rerun, and the gate still says no
 
-The fix is one line: drop the `max-height`/`overflow` cap on `.summary`. Rerun with a new out-dir and the capture comes back clean:
+The fix is one line: drop the `max-height`/`overflow` cap on `.summary`. Serve the fixed copy (the committed run-2 used a second server on port 8932) and rerun with a new out-dir. The capture comes back clean:
 
 ```text
 receipt: run-2/receipt.json
@@ -153,7 +153,7 @@ $ echo $?
 
 | mobile, Overview (fixed) | mobile, Orders |
 |---|---|
-| ![mobile overview after the fix, all seven lines visible](docs/example/run-2/mobile--overview--viewport.png) | ![mobile orders table, fits without horizontal scroll](docs/example/run-2/mobile--orders--viewport.png) |
+| ![mobile overview after the fix, all eight lines visible](docs/example/run-2/mobile--overview--viewport.png) | ![mobile orders table, fits without horizontal scroll](docs/example/run-2/mobile--orders--viewport.png) |
 
 One attestation per screenshot, note required, `--by` naming the inspector:
 
@@ -191,6 +191,21 @@ OK with caveats
 $ echo $?
 0
 ```
+
+One more record is in the committed receipt, and it is there on purpose. An independent reviewer opened the same PNG before release and counted eight lines, not the seven the note above claims. Attestations are append-only, so the miscount stays and a correction is appended after it:
+
+```json
+{
+  "path": "run-2/mobile--overview--viewport.png",
+  "sha256": "4788d4734a7f50aebf18ed8807833c8d16aa4a08eed4f0c4271e4f9cb95c9851",
+  "verdict": "caveat",
+  "note": "Correction: the summary renders in 8 lines, not 7 as my earlier note said. Still fully visible, ending \"outlet pricing.\" Miscount caught by an independent reviewer (Luna).",
+  "by": "claude-fable-5-1",
+  "at": "2026-09-02T01:05:01.217Z"
+}
+```
+
+That is the point of a second inspector. A `caveat` keeps the gate open; a `fail` is final for the run and needs a fresh capture to clear.
 
 ### 4. Regenerated or edited screenshots go stale
 
