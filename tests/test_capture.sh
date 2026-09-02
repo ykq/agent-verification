@@ -163,6 +163,25 @@ run 3 check "$test_root/empty.json"
 grep -q 'NO SCREENSHOTS' "$test_root/stderr" || fail "expected NO SCREENSHOTS"
 check "attestations bound to PNG digests; forged and empty receipts rejected"
 
+# 10bb. Concurrent attestations are lossless and accessibility snapshot bytes are checked.
+run 0 "$fx/tabs.html" --allow-file --tabs 'Overview,Details' --viewports 'a=800x600,b=390x844' \
+  --out-dir "$test_root/concurrent"
+for png in "$test_root/concurrent"/*.png; do
+  node "$capture" attest "$test_root/concurrent/receipt.json" --path "$png" --verdict pass \
+    --note "Concurrent inspection of $(basename "$png")" &
+done
+wait
+receipt "$test_root/concurrent/receipt.json" 'assert len(receipt["inspections"]) == 8, receipt["inspections"]'
+run 0 check "$test_root/concurrent/receipt.json"
+if find "$test_root/concurrent" -maxdepth 1 \( -name '*.lock' -o -name '*.tmp-*' \) -print -quit | grep -q .; then
+  fail "receipt lock or temporary file remained after concurrent attestations"
+fi
+snapshot=$(find "$test_root/concurrent" -maxdepth 1 -name '*.aria.yml' -print -quit)
+printf 'TAMPERED' > "$snapshot"
+run 3 check "$test_root/concurrent/receipt.json"
+grep -q 'TAMPERED EVIDENCE' "$test_root/stderr" || fail "expected TAMPERED EVIDENCE"
+check "concurrent attestations retained; accessibility snapshot tampering rejected"
+
 # 10c. attest refuses a failed capture; check reports every failure class and exits with the most severe.
 run 1 http://127.0.0.1:9/ --timeout-ms 5000 --out-dir "$test_root/failed"
 run 64 attest "$test_root/failed/receipt.json" --path x.png --verdict pass --note 'cannot attest a failed capture'

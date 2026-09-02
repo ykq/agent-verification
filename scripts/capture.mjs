@@ -9,7 +9,7 @@
 //
 // A receipt is evidence, not a verdict: someone still has to look at the PNGs.
 import { createRequire } from 'node:module';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -225,6 +225,46 @@ function parseKeyValues(argv, allowed) {
 }
 function currentDigest(path) { try { return sha256(readFileSync(path)); } catch { return null; } }
 
+function withReceiptLock(receiptPath, fn) {
+  const lockPath = `${receiptPath}.lock`;
+  const deadline = Date.now() + 10000;
+  let lockFd;
+  while (lockFd === undefined) {
+    try {
+      lockFd = openSync(lockPath, 'wx');
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      try {
+        if (Date.now() - statSync(lockPath).mtimeMs > 60000) {
+          unlinkSync(lockPath);
+          continue;
+        }
+      } catch (staleError) {
+        if (staleError.code !== 'ENOENT') throw staleError;
+        continue;
+      }
+      if (Date.now() >= deadline) throw new UsageError('receipt is locked by another attest; retry');
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    closeSync(lockFd);
+    try { unlinkSync(lockPath); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
+}
+
+function writeReceiptAtomic(receiptPath, receipt) {
+  const temporaryPath = `${receiptPath}.tmp-${process.pid}-${randomBytes(6).toString('hex')}`;
+  try {
+    writeFileSync(temporaryPath, `${JSON.stringify(receipt, null, 2)}\n`);
+    renameSync(temporaryPath, receiptPath);
+  } finally {
+    try { unlinkSync(temporaryPath); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  }
+}
+
 function attest(argv) {
   const receiptPath = argv[0];
   if (!receiptPath || receiptPath.startsWith('--')) throw new UsageError('attest requires a receipt path');
@@ -232,21 +272,24 @@ function attest(argv) {
   if (!opts.path) throw new UsageError('--path is required');
   if (!VERDICTS.includes(opts.verdict)) throw new UsageError(`--verdict must be one of ${VERDICTS.join(', ')}`);
   if (!opts.note || opts.note.trim().length < 10) throw new UsageError('--note must describe what you saw (at least 10 characters)');
-  const receipt = readReceipt(receiptPath);
-  if (receipt.status === 'capture_failed') throw new UsageError(`receipt ${receipt.run_id} is a failed capture; rerun the capture instead of attesting it`);
-  const wanted = basename(opts.path);
-  const matches = pngShots(receipt).filter((shot) => shot.path === opts.path || shot.path === resolve(opts.path) || basename(shot.path) === wanted);
-  if (!matches.length) throw new UsageError(`--path does not name a screenshot in this receipt: ${opts.path}`);
-  if (matches.length > 1) throw new UsageError(`--path is ambiguous; use the full path: ${matches.map((shot) => shot.path).join(', ')}`);
-  const shot = matches[0];
-  const digest = currentDigest(shot.path);
-  if (digest === null) throw new UsageError(`screenshot is missing on disk: ${shot.path}`);
-  if (digest !== shot.sha256) throw new UsageError(`screenshot bytes differ from the receipt (sha256 ${digest.slice(0, 12)} vs ${shot.sha256.slice(0, 12)}); rerun the capture`);
-  receipt.inspections.push({
-    path: shot.path, sha256: shot.sha256, run_id: receipt.run_id, viewport: shot.viewport?.name, state: shot.state,
-    verdict: opts.verdict, note: opts.note.trim(), by: opts.by || 'unspecified', at: new Date().toISOString(),
+  const shot = withReceiptLock(receiptPath, () => {
+    const receipt = readReceipt(receiptPath);
+    if (receipt.status === 'capture_failed') throw new UsageError(`receipt ${receipt.run_id} is a failed capture; rerun the capture instead of attesting it`);
+    const wanted = basename(opts.path);
+    const matches = pngShots(receipt).filter((entry) => entry.path === opts.path || entry.path === resolve(opts.path) || basename(entry.path) === wanted);
+    if (!matches.length) throw new UsageError(`--path does not name a screenshot in this receipt: ${opts.path}`);
+    if (matches.length > 1) throw new UsageError(`--path is ambiguous; use the full path: ${matches.map((entry) => entry.path).join(', ')}`);
+    const matched = matches[0];
+    const digest = currentDigest(matched.path);
+    if (digest === null) throw new UsageError(`screenshot is missing on disk: ${matched.path}`);
+    if (digest !== matched.sha256) throw new UsageError(`screenshot bytes differ from the receipt (sha256 ${digest.slice(0, 12)} vs ${matched.sha256.slice(0, 12)}); rerun the capture`);
+    receipt.inspections.push({
+      path: matched.path, sha256: matched.sha256, run_id: receipt.run_id, viewport: matched.viewport?.name, state: matched.state,
+      verdict: opts.verdict, note: opts.note.trim(), by: opts.by || 'unspecified', at: new Date().toISOString(),
+    });
+    writeReceiptAtomic(receiptPath, receipt);
+    return matched;
   });
-  writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
   process.stdout.write(`attested: ${shot.path} (${opts.verdict}) sha256:${shot.sha256.slice(0, 12)}\n`);
   return EXIT.ok;
 }
@@ -267,21 +310,33 @@ function check(argv) {
       if (!requiredCoverage.includes(canonical)) requiredCoverage.push(canonical);
     }
   }
-  const receipt = readReceipt(receiptPath);
+  let receipt = readReceipt(receiptPath);
   const storedCoverage = Array.isArray(receipt.required_coverage) ? receipt.required_coverage : [];
   const enforcedCoverage = [...storedCoverage];
   for (const requirement of requiredCoverage) {
     if (!enforcedCoverage.includes(requirement)) enforcedCoverage.push(requirement);
   }
   if (enforcedCoverage.length > storedCoverage.length) {
-    receipt.required_coverage = enforcedCoverage;
-    writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
+    receipt = withReceiptLock(receiptPath, () => {
+      const current = readReceipt(receiptPath);
+      const currentCoverage = Array.isArray(current.required_coverage) ? current.required_coverage : [];
+      for (const requirement of requiredCoverage) {
+        if (!currentCoverage.includes(requirement)) currentCoverage.push(requirement);
+      }
+      current.required_coverage = currentCoverage;
+      writeReceiptAtomic(receiptPath, current);
+      return current;
+    });
+    enforcedCoverage.splice(0, enforcedCoverage.length, ...receipt.required_coverage);
   }
   const shots = pngShots(receipt);
   const problems = []; // { code, line }
   if (receipt.status === 'capture_failed') problems.push({ code: EXIT.capture_failed, line: `CAPTURE FAILED: ${receipt.error}` });
   if (receipt.findings.length) problems.push({ code: EXIT.structural_failures, line: `STRUCTURAL FINDINGS: ${receipt.findings.map((f) => `${f.type}@${f.viewport}/${f.state}`).join(', ')}` });
   if (!shots.length && receipt.status !== 'capture_failed') problems.push({ code: EXIT.uninspected, line: 'NO SCREENSHOTS: the receipt records no PNG evidence' });
+  for (const snapshot of receipt.screenshots.filter((shot) => shot.kind === 'accessibility_snapshot')) {
+    if (currentDigest(snapshot.path) !== snapshot.sha256) problems.push({ code: EXIT.uninspected, line: `TAMPERED EVIDENCE: ${snapshot.path} (bytes changed since capture)` });
+  }
 
   for (const requirement of enforcedCoverage) {
     const [rawViewport, rawState] = requirement.split(':');
@@ -519,7 +574,7 @@ try {
 }
 
 const receiptPath = join(config.outDir, 'receipt.json');
-writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
+writeReceiptAtomic(receiptPath, receipt);
 process.stdout.write(`receipt: ${receiptPath}\nrun_id: ${runId}\nstatus: ${receipt.status}\n`);
 if (receipt.error) process.stderr.write(`error: ${receipt.error}\n`);
 if (receipt.findings.length) process.stderr.write(`${JSON.stringify(receipt.findings, null, 2)}\n`);
