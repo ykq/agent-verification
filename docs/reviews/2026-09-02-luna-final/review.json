@@ -1,0 +1,104 @@
+{
+  "artifact_sha256": "d848f3ed65c6662feaf7e28e7204c5f8e4dab6eddfa6e5db813fbfb48b30528f",
+  "verdict": "approve_with_changes",
+  "findings": [
+    {
+      "severity": "medium",
+      "location": "scripts/capture.mjs:408-427 (out-dir reuse deletes receipt.json before capture) vs README.md:67 ('later checks enforce the union of everything ever required, so a matrix can be widened but never quietly narrowed'), README.md:235, SKILL.md:71-73",
+      "failure_mode": "OBSERVED: after `check --require 'desktop:*,mobile:*'` had stored required_coverage on a full run, I re-ran capture into the SAME --out-dir with `--tabs Overview --viewports desktop=1280x800 --screenshot-mode viewport` against the defect page (docs/demo). The cleanup removed receipt.json, so the new receipt had no required_coverage and no inspections; one attestation later a plain `check` printed 'OK: every screenshot inspected against its current bytes, nothing failed', exit 0, with the clipped mobile view never captured. The same path erases a `fail` attestation ('a fail is final for that run'). Out-dir reuse is explicitly supported (README:69, SKILL.md:55), so the 'stored requirement' is only as sticky as the file capture is told to delete; an agent that reuses the directory the task named gets a green gate without ever passing --require again.",
+      "amendment": "When reusing an out-dir whose prior receipt.json parses as this tool's receipt, carry `required_coverage` (and a `supersedes_run_id`) forward into the new receipt before writing it; alternatively refuse reuse when the prior receipt has required_coverage or any `fail` inspection unless `--replace` is given. Update README:67/235 to say the requirement is bound to the receipt and survives out-dir reuse (or that reuse is refused).",
+      "mechanical_test": "In tests/test_capture.sh: capture tabs.html with `--tabs 'Overview,Details' --viewports 'a=800x600,b=390x844'` into $d; attest all; `run 0 check $d/receipt.json --require 'a:*,b:*'`; re-capture into the same $d with `--tabs Overview --viewports a=800x600 --screenshot-mode viewport --no-aria-snapshot`; attest its one PNG; `run 3 check $d/receipt.json` and `grep -q 'MISSING COVERAGE: b:\\*' stderr` (or `run 64` on the re-capture if refusal is chosen). npm test passes."
+    },
+    {
+      "severity": "medium",
+      "location": "scripts/capture.mjs:344-354 (wildcard matches 'at least one captured shot') vs README.md:64,196,242 and docs/example/run-2/receipt.json required_coverage ['desktop:*','mobile:*'], SKILL.md:68 ('mobile:*')",
+      "failure_mode": "OBSERVED: against the fixed demo page I captured with `--tabs Overview` only (Orders tab dropped), both viewports, attested the two PNGs, and `check --require 'desktop:*,mobile:*'` — the exact form the README recommends and the committed example stores — exited 0 with 'OK'. `--require 'desktop:Orders,mobile:Orders'` correctly reported MISSING COVERAGE. A `*` on the state side is satisfied by any single state, so the documented invocation lets an agent silently drop every tab but one; README:220 ('Capturing less does not help either') demonstrates only viewport narrowing. Readers will copy the wildcard form and believe the tab matrix is enforced.",
+      "amendment": "Document that `*` means 'at least one captured value' and cannot detect a dropped tab; change the README/SKILL examples and the committed run-2 requirement to explicit pairs (`desktop:Overview,desktop:Orders,mobile:Overview,mobile:Orders`), and have SKILL.md instruct agents to list every state by name. Optionally expand `V:*` against the union of states named elsewhere in required_coverage.",
+      "mechanical_test": "Add to test 17: capture tabs.html with `--tabs Overview --viewports 'desk=800x600,mob=390x844' --screenshot-mode viewport --no-aria-snapshot`; attest both; `run 0 check ... --require 'desk:*,mob:*'` documents the wildcard limit, then `run 3 check ... --require 'desk:Details'` with `grep -q 'MISSING COVERAGE: desk:Details'`. `grep -n 'mobile:\\*' README.md SKILL.md` returns only lines that also state the wildcard limitation."
+    },
+    {
+      "severity": "medium",
+      "location": "scripts/capture.mjs:281-282 (attest matches `basename(entry.path) === wanted` regardless of directory) and 286 (digest read from the receipt's own artifact, not from the file named by --path)",
+      "failure_mode": "OBSERVED: I placed a 9-byte non-PNG at <elsewhere>/mobile--overview--full.png and ran `attest run-2b/receipt.json --path <elsewhere>/mobile--overview--full.png`; it was accepted ('attested: mobile--overview--full.png (pass)') because the digest was taken from run-2b's own file. Concretely, an inspector who opens run-3's `mobile--overview--full.png` (same basename, different bytes) and attests run-2's receipt with that absolute path records a pass against evidence they never viewed. The receipt's 'bound to the PNG's sha256' guarantee then binds to bytes the inspector did not look at.",
+      "amendment": "When --path contains a directory component, resolve it and require it to be the receipt's artifact (same resolved path) or, if it is a different existing file, hash that file and refuse unless its sha256 equals the receipt entry's; otherwise error 'path names a different file than the receipt's artifact'.",
+      "mechanical_test": "In tests/test_capture.sh after 10b: `mkdir $t/other; printf x > $t/other/test--page--viewport.png; run 64 attest $t/digest/receipt.json --path $t/other/test--page--viewport.png --verdict pass --note 'wrong file with same basename' --by tester; grep -q 'different file' $t/stderr`. npm test passes."
+    },
+    {
+      "severity": "low",
+      "location": "SKILL.md:73 ('Run `attest` calls one at a time: the receipt is a single file and concurrent writers lose records') vs README.md:271, CHANGELOG.md 0.2.0 (lock + atomic write), scripts/capture.mjs:230-268",
+      "failure_mode": "OBSERVED: SKILL.md still carries the 0.1.x interim mitigation while README and CHANGELOG say concurrent attests are serialised. I ran 16 concurrent attests plus 4 concurrent `check --require` on one receipt: all 16 records retained, coverage union stored, no .lock/.tmp leftovers. The skill file agents actually load contradicts the shipped behaviour and tells them to serialise unnecessarily; a first public reader will notice the release notes and the skill disagree.",
+      "amendment": "Replace the SKILL.md:73 sentence with 'Concurrent `attest` calls are serialised with a lock file and written atomically.'",
+      "mechanical_test": "`grep -c 'one at a time' SKILL.md` returns 0 and `grep -c 'serialised' SKILL.md` returns 1."
+    },
+    {
+      "severity": "low",
+      "location": "scripts/capture.mjs:543-548 (describe: id/class/text verbatim) and 570-571 (findings[].elements) vs README.md:270 ('applies to diagnostics only; accessibility snapshots are page content written verbatim') and receipt trust_note (capture.mjs:441)",
+      "failure_mode": "OBSERVED: a page whose clipped element contained 'jane.doe@corp.example, SSN 123-45-6789, API key sk_live_ABCDEFGH12345678' produced `findings[0].elements[0].text` with all three verbatim, although `sk_live_…` matches TOKEN_SHAPES and would have been scrubbed had redact() been applied. README and trust_note name only snapshots as the verbatim channel; findings text (also echoed to stderr and quoted in README:111) is an undocumented third one, and it lives inside receipt.json, the file users are told to share.",
+      "amendment": "Pass `describe().text` (and id/class) through `redact()` before pushing findings, and add 'structural finding excerpts' to the README:270 sentence and to trust_note.",
+      "mechanical_test": "Fixture with a clipped `<p>` containing `sk_live_ABCDEFGH12345678`; capture; `! grep -q sk_live_ABCDEFGH receipt.json`. `grep -c 'finding' README.md` includes the redaction bullet."
+    },
+    {
+      "severity": "low",
+      "location": "package-lock.json:3 and :9 (\"version\": \"0.1.0\") vs package.json:3 (\"version\": \"0.2.0\"), SKILL.md:8, CHANGELOG.md",
+      "failure_mode": "OBSERVED: the lockfile committed for the 0.2.0 release still records the root package as 0.1.0 (CHANGELOG says the lock was regenerated for Node 20; the version was not bumped). `npm ci` tolerates it, but the first `npm install` by any contributor rewrites the lock and dirties the tree, and the mismatch is visible on the GitHub 'dependencies' view of a repo whose whole pitch is checkable claims.",
+      "amendment": "Run `npm install --package-lock-only` and commit the lock with version 0.2.0.",
+      "mechanical_test": "`node -e \"const l=require('./package-lock.json'),p=require('./package.json');process.exit(l.version===p.version&&l.packages[''].version===p.version?0:1)\"` exits 0."
+    },
+    {
+      "severity": "low",
+      "location": "scripts/capture.mjs:230-268 (withReceiptLock/writeReceiptAtomic) and 323-332 (check's coverage write), dispatch at 392-398 rethrows non-UsageError",
+      "failure_mode": "OBSERVED: with the run directory chmod 555, both `attest` and `check --require <new pair>` crash with a raw Node stack trace ('node:fs:560 return binding.open', 7 stack lines) and exit 1 — the code reserved for 'capture failed'. `check` on a read-only receipt (a CI artifact, a committed example) therefore cannot even report gate status once a new requirement is passed, and README:283's 'usage errors exiting 64 without stack traces' does not cover the most likely filesystem error.",
+      "amendment": "Catch EACCES/EROFS/EPERM in withReceiptLock and writeReceiptAtomic and rethrow as UsageError('cannot write receipt <path>: <code>'); for `check`, when the write fails, still print the gate report and exit with the gate code plus a 'REQUIREMENT NOT STORED' line.",
+      "mechanical_test": "`cp -r $t/req $t/ro; chmod 555 $t/ro; run 64 attest $t/ro/receipt.json --path desk--overview--viewport.png --verdict pass --note 'read-only directory test' --by tester; ! grep -q '    at ' $t/stderr; chmod 755 $t/ro`. npm test passes."
+    },
+    {
+      "severity": "low",
+      "location": "scripts/capture.mjs:413-422 (priorReceipt = any JSON with numeric schema_version; then pattern-based deletion) vs README.md:274 ('pointing the collector at an assets folder cannot delete anything')",
+      "failure_mode": "OBSERVED: an out-dir containing `receipt.json` = `{\"schema_version\":1}` (not this tool's receipt) plus a foreign `brand--logo--full.png` was accepted for reuse and the foreign PNG was deleted; only `notes.txt` survived. Any directory that holds some other tool's receipt.json with a numeric schema_version unlocks deletion of every `*--*--{viewport,full}.png` / `*--*.aria.yml` in it. The README's absolute claim is therefore slightly over-stated.",
+      "amendment": "Require the prior receipt to validate via readReceipt (schema 3/4, run_id string, screenshots array) and delete only receipt.json plus the files named in that receipt's screenshots[] (basename, within the directory), not pattern matches.",
+      "mechanical_test": "Extend test 19: `mkdir $t/f2; echo '{\"schema_version\":1}' > $t/f2/receipt.json; printf keep > $t/f2/brand--logo--full.png; run 64 <capture> --out-dir $t/f2; [ -f $t/f2/brand--logo--full.png ]`."
+    },
+    {
+      "severity": "low",
+      "location": "scripts/capture.mjs:312-313 and 326-327 (required_coverage deduplicated by exact string) vs matching at 346-347 (slug-normalised)",
+      "failure_mode": "OBSERVED: `--require 'Desktop:overview'` then `--require 'DESKTOP:OVERVIEW'` stored two additional entries alongside 'desktop:*'; required_coverage grew to six strings for three semantic requirements. Harmless to the gate, but the receipt field the README tells agents to quote becomes noisy and the MISSING COVERAGE list can print the same missing pair several times.",
+      "amendment": "Canonicalise each pair as `${viewport==='*'?'*':slug(viewport)}:${state==='*'?'*':slug(state)}` before storing and comparing.",
+      "mechanical_test": "`run 0 check $r --require 'Desk:Overview'; run 0 check $r --require 'DESK:OVERVIEW'; receipt $r 'assert receipt[\"required_coverage\"].count(\"desk:overview\") == 1 and len(receipt[\"required_coverage\"]) == 1'`."
+    },
+    {
+      "severity": "low",
+      "location": "README.md:270 ('the first survives only when it is a plain route word') vs scripts/capture.mjs:193 (`/^[A-Za-z][A-Za-z-]{0,31}$/`)",
+      "failure_mode": "OBSERVED: console text `https://intra.corp.example/karina/private-notes/2026?tok=1` became `https://intra.corp.example/karina/[REDACTED]/[REDACTED]?REDACTED`, and a failed request to `/karina-qian/notes` kept `/karina-qian/[REDACTED]`. A first path segment that is a username or tenant slug (GitHub-style `/user/repo`, `/acme-corp/…`) survives because the regex only tests for letters and hyphens; the README wording implies a route-word vocabulary. Also OBSERVED: a bare email address in console text ('user jane.doe@corp.example') is kept; the README does not claim emails are removed, but the sentence 'identifiers in URL path segments never reaching the receipt' (README:283) is broader than what holds.",
+      "amendment": "Reword README:270/283 to 'the first segment survives when it consists only of letters and hyphens (which can include a user or tenant name)', or tighten the rule to redact every segment unless --keep-paths.",
+      "mechanical_test": "Fixture logging `https://h.example/karina-qian/x`; capture; `grep -q 'h.example/\\[REDACTED\\]' receipt.json` (if tightened) or README diff contains 'letters and hyphens'."
+    },
+    {
+      "severity": "low",
+      "location": "README.md:203 (relative link `../../commit/c78fd09`, claim 'both records are in git history') and docs/reviews/README.md:20 ('replaced with `<packet>` and `~`') vs docs/reviews/*/manifest.json (`<scratch>`)",
+      "failure_mode": "INFERENCE (history not in the artifact): the README's only checkable pointer for the '7 vs 8 lines' correction is commit c78fd09 in the private history; if the flip is preceded by any squash/rebase/filter-repo, the link 404s and the evidence claim in a repo about evidence claims is dead on day one. The `../../commit/` form also breaks in every renderer except github.com. OBSERVED: docs/reviews/README.md says scratch paths were replaced with `<packet>` and `~`, but the manifests use `<scratch>` and no `~` appears — a small inaccuracy in the file whose purpose is to be exact about what was edited.",
+      "amendment": "Use an absolute URL `https://github.com/ykq/agent-verification/commit/c78fd09…` with the full 40-char hash, and amend docs/reviews/README.md:20 to '`<packet>`, `<scratch>` and `~`'.",
+      "mechanical_test": "After the flip: `curl -o /dev/null -sw '%{http_code}' https://github.com/ykq/agent-verification/commit/c78fd09` returns 200; `grep -c '<scratch>' docs/reviews/README.md` returns 1."
+    }
+  ],
+  "minimal_amendments": [
+    "capture.mjs out-dir reuse: carry required_coverage forward (or refuse reuse when the prior receipt has required_coverage or a fail inspection); README:67/235 and SKILL.md:71 reworded accordingly; new fixture test.",
+    "README.md:64/196/242, SKILL.md:68, docs/example/run-2/receipt.json: replace the `desktop:*,mobile:*` recommendation with explicit viewport:state pairs and state that `*` only requires at least one captured value.",
+    "capture.mjs attest: when --path has a directory component that resolves to a different existing file, refuse unless its sha256 equals the receipt entry's.",
+    "SKILL.md:73: delete the 'run attest calls one at a time' sentence; state that attest is lock-serialised and atomic.",
+    "capture.mjs: run redact() over findings[].elements[].text/id/class; mention finding excerpts in README:270 and trust_note.",
+    "package-lock.json: `npm install --package-lock-only` so the root version reads 0.2.0.",
+    "capture.mjs: convert EACCES/EROFS/EPERM during attest/check writes into a clean 'error:' line (exit 64), no stack trace.",
+    "capture.mjs out-dir cleanup: validate the prior receipt with readReceipt and delete only the artifacts it lists; README:274 softened until then.",
+    "capture.mjs: store required_coverage in slug-canonical form so case/spacing variants deduplicate.",
+    "README.md:203: absolute commit URL with full hash; docs/reviews/README.md:20: add `<scratch>`."
+  ],
+  "owner_questions": [
+    "Tree scan result (OBSERVED, grep of every tracked file incl. package-lock, fixtures, docs/example receipts and .aria.yml, docs/reviews): no emails other than the fixture's jane.doe@acme.com, no hostnames, no *.ts.net, no /home or /Users paths, no custom User-Agent strings, no wrapper scripts or internal tool names; the only identifiers are 'Karina Qian', 'ykq', 'claude-fable-5-1', 'Codex (gpt-5.6)', '/tmp/demo/run-N', and 127.0.0.1 with ports 8931/8932/9. Git history is NOT in the packet and README:203 depends on it being published intact: have you run `git log -p --all | grep -iE 'ts\\.net|/home/|@gmail|<lab-specific terms>'` on the actual repo, and will c78fd09 survive un-rewritten?",
+    "The receipt records `config.user_agent` verbatim (OBSERVED: AGENT_VERIFICATION_USER_AGENT='MyLab/1.0 (someone@example.invalid)' landed in receipt.json). If your own shell exports a lab-wide User-Agent to satisfy a per-request policy, every receipt you share will carry it. Is that acceptable, or should the receipt store only a sha256/boolean for the override?",
+    "README:13 says the collector 'was written by one model and audited by others'; docs/reviews/README.md discloses both prior reviewers are Claude-family, and this review is too, while SKILL.md:20 asks for a different model family. For 0.2.0 the code was implemented by Codex, so the cross-family claim holds for this release's code but not for the 0.1.x reviews of Claude-written code. Do you want README:13 to say exactly that, so the claim survives a sceptical reader?",
+    "Out-dir reuse currently discards a `fail` attestation and stored coverage with the receipt (finding 1). Is 'a fail is final for that run' meant to be enforceable across a re-capture into the same directory, or is a fresh run_id by definition a clean slate? Your answer decides between carry-forward and refusal.",
+    "Do you want a wildcard in --require to keep its current 'at least one' meaning (finding 2), or to expand against the tabs named in the original capture command so `desktop:*` means every state the task listed? The former is simpler and needs only a doc change; the latter needs a place to record the intended tab list independent of what a narrowed capture wrote.",
+    "The walkthrough and the fixed demo were captured with system Chrome (`chrome: null` recorded, Playwright-bundled Chromium not used per browserPath preference); the README does not say which browser produced the committed PNGs. Fine for 0.2.0, or do you want the receipt to record the resolved executable/version so digests are reproducible across machines?",
+    "The commit link in README:203 uses `../../commit/c78fd09`, which resolves only on github.com. Are you committed to GitHub as the sole rendering surface for this README (agentskills.io listing, npm, mirrors would show a broken link)?"
+  ]
+}

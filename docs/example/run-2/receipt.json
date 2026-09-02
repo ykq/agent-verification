@@ -282,6 +282,10 @@
   ],
   "required_coverage": [
     "desktop:*",
-    "mobile:*"
+    "mobile:*",
+    "desktop:overview",
+    "desktop:orders",
+    "mobile@390x844:overview",
+    "mobile@390x844:orders"
   ]
 }

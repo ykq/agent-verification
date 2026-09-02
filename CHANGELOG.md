@@ -11,6 +11,12 @@ First public release. Code changes in this release were implemented by Codex (gp
 - `check` re-hashes accessibility snapshots and reports `TAMPERED EVIDENCE` when one changed.
 - `attest` requires `--by`; `check` reports `INVALID ATTESTATION` for records with no inspector or a note under ten characters.
 - `--out-dir` reuse is refused for a non-empty directory that holds no prior `receipt.json`; cleanup skips directories and non-matching files.
+- `attest --path` with a directory component must name the receipt's own artifact or a byte-identical copy; a different file that shares the basename is refused.
+- Filesystem write errors during `attest`/`check` are clean one-line usage errors (exit 64), never stack traces.
+- `--require` pairs are stored in canonical slug form, so case and spacing variants deduplicate.
+- The receipt records `user_agent_override: true|false` instead of the User-Agent string.
+- Structural-finding excerpts (`findings[].elements` text, id, class) pass through the same redaction as diagnostics; the receipt's trust note says so.
+- `--out-dir` reuse requires a prior receipt that validates as this tool's, and deletes only the files that receipt lists plus `receipt.json`; anything else in the directory is left alone.
 - `agents/openai.yaml`: `allow_implicit_invocation: false`.
 - Docs: walkthrough regenerated under schema 4 with a coverage-narrowing step; review packets committed under `docs/reviews/`.
 

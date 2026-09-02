@@ -1,0 +1,11 @@
+[
+  {
+    "reviewer": "Luna",
+    "provider": "claude-code subagent (general-purpose, fresh context, read-only on the repo)",
+    "attempt": 1,
+    "exit_state": "completed",
+    "duration_ms": 1269660,
+    "artifact_sha256": "d848f3ed65c6662feaf7e28e7204c5f8e4dab6eddfa6e5db813fbfb48b30528f",
+    "artifact_commit": "142c940"
+  }
+]

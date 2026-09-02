@@ -88,6 +88,15 @@ run 0 "$fx/leak3.html" --allow-file --keep-paths --viewports 'test=400x300' --sc
 receipt "$test_root/leak3-keep/receipt.json" 'assert "private-notes" in json.dumps(receipt["diagnostics"]), receipt["diagnostics"]'
 check "URL path identifiers redacted unless --keep-paths is set"
 
+# 5c. Structural finding excerpts are redacted before entering the receipt.
+run 2 "$fx/leak4.html" --allow-file --viewports 'test=400x300' --screenshot-mode viewport --out-dir "$test_root/leak4"
+receipt "$test_root/leak4/receipt.json" '
+assert any(f["type"] == "clipped_content" for f in receipt["findings"]), receipt["findings"]
+serialised = json.dumps(receipt["findings"])
+assert "sk_live_ABCDEFGH" not in serialised, serialised
+assert "/customers/jane.doe" not in serialised, serialised'
+check "structural finding excerpts redacted"
+
 # 6. file:// refused without --allow-file; no receipt written.
 run 64 "$fx/clean.html" --out-dir "$test_root/nofile"
 grep -q 'allow-file' "$test_root/stderr" || fail "expected --allow-file hint"
@@ -342,21 +351,29 @@ grep -q 'STALE ATTESTATION' "$test_root/stderr" || fail "copied receipt did not 
 check "relative artifact paths survive copied run directories"
 
 # 19. Reuse cleanup refuses foreign directories and safely replaces prior capture artifacts.
+mkdir "$test_root/f2"
+printf '{"schema_version":1}\n' > "$test_root/f2/receipt.json"
+printf keep > "$test_root/f2/brand--logo--full.png"
+run 64 "$fx/clean.html" --allow-file --viewports 'test=400x300' --screenshot-mode viewport \
+  --out-dir "$test_root/f2"
+[ -f "$test_root/f2/brand--logo--full.png" ] || fail "foreign file was removed after invalid receipt"
 mkdir -p "$test_root/foreign/sub--dir--full.png"
 printf 'keep me' > "$test_root/foreign/brand--logo--full.png"
 run 64 "$fx/clean.html" --allow-file --viewports 'test=400x300' --screenshot-mode viewport \
   --out-dir "$test_root/foreign"
-grep -q 'refusing to reuse non-empty --out-dir without a prior receipt.json' "$test_root/stderr" || fail "missing safe-reuse refusal"
+grep -q 'refusing to reuse non-empty --out-dir without a prior receipt.json from this tool' "$test_root/stderr" || fail "missing safe-reuse refusal"
 [ -f "$test_root/foreign/brand--logo--full.png" ] || fail "foreign matching file was removed"
 [ -d "$test_root/foreign/sub--dir--full.png" ] || fail "foreign matching directory was removed"
 mkdir "$test_root/reuse-safe"
 run 0 "$fx/clean.html" --allow-file --viewports 'old=400x300' --screenshot-mode viewport \
   --no-aria-snapshot --out-dir "$test_root/reuse-safe"
+printf keep > "$test_root/reuse-safe/extra--thing--full.png"
 run 0 "$fx/clean.html" --allow-file --viewports 'new=400x300' --screenshot-mode viewport \
   --no-aria-snapshot --out-dir "$test_root/reuse-safe"
 [ ! -e "$test_root/reuse-safe/old--page--viewport.png" ] || fail "old artifact survived safe reuse"
 [ -f "$test_root/reuse-safe/new--page--viewport.png" ] || fail "new artifact missing after safe reuse"
-[ "$(find "$test_root/reuse-safe" -mindepth 1 -maxdepth 1 | wc -l)" -eq 2 ] || fail "safe reuse left unexpected artifacts"
+[ -f "$test_root/reuse-safe/extra--thing--full.png" ] || fail "foreign file was removed during safe reuse"
+[ "$(find "$test_root/reuse-safe" -mindepth 1 -maxdepth 1 | wc -l)" -eq 3 ] || fail "safe reuse left unexpected artifacts"
 check "out-dir cleanup preserves foreign content and handles safe reuse"
 
 # 20. Attestation identity and substantive notes are enforced at write and check time.

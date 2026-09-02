@@ -6,11 +6,11 @@ Most "evidence before claims" skills are prose. This one ships a **receipt that 
 
 1. `capture` renders a page across viewports and tab states and writes PNGs, accessibility snapshots, browser diagnostics, machine-detected structural findings, and `receipt.json` — status `capture_complete_requires_human_inspection`, because a screenshot nobody looked at is just a file.
 2. `attest` appends a written observation per screenshot (`pass` / `caveat` / `fail`, note and inspector name required, append-only), bound to the PNG's sha256 and the run's id.
-3. `check` exits `0` only when every screenshot has an attestation that still matches the bytes on disk, none failed, and no structural finding remains. It lists every failing gate and exits with the most severe. Pass `--spec` and the receipt carries the sha256 of the design spec it was judged against. Pass `--require 'desktop:Overview,mobile:*'` and it also fails when any declared viewport and state pair was never captured, so a narrower re-capture cannot hide a defect; the requirement is written into the receipt and stays in force for every later `check`.
+3. `check` exits `0` only when every screenshot has an attestation that still matches the bytes on disk, none failed, and no structural finding remains. It lists every failing gate and exits with the most severe. Pass `--spec` and the receipt carries the sha256 of the design spec it was judged against. Pass `--require 'desktop:Overview,desktop:Orders,mobile:Overview,mobile:Orders'` and it also fails when any declared viewport and state pair was never captured, so a narrower re-capture cannot hide a defect; the requirement is written into the receipt and stays in force for every later `check`.
 
 An agent can run step 1 and stop. It cannot make step 3 pass without writing down something for every viewport and state that still matches the bytes on disk. The gate enforces that a note exists and is bound to the evidence, not that the note is true; note accuracy is what the independent second inspector is for.
 
-Attestations carry a `--by` field for a reason: the skill asks that the inspector not be the author, and preferably not the same model family. This repo follows its own rule: the collector was written by one model and audited by others before release, and the raw reviews are committed under [`docs/reviews/`](docs/reviews/) so you can check that claim rather than take it.
+Attestations carry a `--by` field for a reason: the skill asks that the inspector not be the author, and preferably not the same model family. This repo follows its own rule as far as it could: the 0.1.x collector was written by a Claude model and reviewed by two other Claude sessions; the 0.2.0 changes were implemented by Codex from Claude specs and reviewed by Claude Opus and a fresh Claude agent. The raw reviews are committed under [`docs/reviews/`](docs/reviews/) so you can check that claim rather than take it.
 
 ```
 receipt.json
@@ -61,10 +61,11 @@ Then inspect and attest:
 ```bash
 node scripts/capture.mjs attest ./.agent-verification/run-1/receipt.json \
   --path mobile--details--viewport.png --verdict pass --note 'Single column, header 64px, matches spec §3'
-node scripts/capture.mjs check ./.agent-verification/run-1/receipt.json --require 'desktop:*,mobile:*'
+node scripts/capture.mjs check ./.agent-verification/run-1/receipt.json \
+  --require 'desktop:Overview,desktop:Details,mobile@390x844:Overview,mobile@390x844:Details'
 ```
 
-`--require` takes the viewport and state pairs that must be present and attested. `*` on either side means every value captured; `mobile@390x844:Overview` pins the rendered size as well as the label. Once a receipt has been checked with a requirement, later checks enforce the union of everything ever required, and a re-capture into the same out-dir inherits it, so a matrix can be widened but never quietly narrowed. `check` prints a `COVERAGE:` line per satisfied requirement naming the viewport and size that satisfied it. It never relaxes the base rule: every captured screenshot still needs its own attestation. On a read-only receipt the requirement is enforced for that run and a warning says it could not be stored.
+`--require` takes the viewport and state pairs that must be present and attested. Name every state the task calls for: `*` means "at least one captured value", so `desktop:*` is satisfied by a capture that dropped every tab but one; `mobile@390x844:Overview` pins the rendered size as well as the label. Once a receipt has been checked with a requirement, later checks enforce the union of everything ever required, and a re-capture into the same out-dir inherits it, so a matrix can be widened but never quietly narrowed. `check` prints a `COVERAGE:` line per satisfied requirement naming the viewport and size that satisfied it. It never relaxes the base rule: every captured screenshot still needs its own attestation. On a read-only receipt the requirement is enforced for that run and a warning says it could not be stored.
 
 Run `node scripts/capture.mjs --help` for every option. Use a fresh `--out-dir` per run: a directory holding a previous receipt is cleared of that run's artifacts (`receipt.json`, `*--*--viewport.png`, `*--*--full.png`, `*--*.aria.yml`) before capture; a non-empty directory with no receipt is refused.
 
@@ -190,19 +191,22 @@ Each attestation is stored with the PNG's digest and the run id, so it cannot be
 }
 ```
 
-Now the gate opens. Declare the coverage the task called for at the same time, so the requirement is written into the receipt:
+Now the gate opens. Declare the coverage the task called for at the same time, every state by name and the phone size pinned, so the requirement is written into the receipt:
 
 ```text
-$ node scripts/capture.mjs check run-2/receipt.json --require 'desktop:*,mobile:*'
+$ node scripts/capture.mjs check run-2/receipt.json \
+    --require 'desktop:Overview,desktop:Orders,mobile@390x844:Overview,mobile@390x844:Orders'
 screenshots: 8, attested: 8, findings: 0
-COVERAGE: desktop:* -> desktop@1280x800
-COVERAGE: mobile:* -> mobile@390x844
+COVERAGE: desktop:overview -> desktop@1280x800
+COVERAGE: desktop:orders -> desktop@1280x800
+COVERAGE: mobile@390x844:overview -> mobile@390x844
+COVERAGE: mobile@390x844:orders -> mobile@390x844
 OK with caveats
 $ echo $?
 0
 ```
 
-A note on the "8 lines" in that attestation. The first cut of this example said seven. An independent reviewer opened the same PNG before release and counted eight. Attestations are append-only, so that cut kept the wrong note and a `caveat` correction was appended after it; both records are in git history ([`docs/example/run-2/receipt.json` at commit `c78fd09`](../../commit/c78fd09)). The example was then regenerated for receipt schema 4 with the count fixed at the source. That is the point of a second inspector. "Luna" is the name of that reviewer, an independent agent on a different model family; its full review is in [`docs/reviews/2026-09-01-luna/`](docs/reviews/2026-09-01-luna/). A `caveat` keeps the gate open; a `fail` is final for the run and needs a fresh capture to clear.
+A note on the "8 lines" in that attestation. The first cut of this example said seven. An independent reviewer opened the same PNG before release and counted eight. Attestations are append-only, so that cut kept the wrong note and a `caveat` correction was appended after it; both records are in git history ([`docs/example/run-2/receipt.json` at commit `c78fd09`](https://github.com/ykq/agent-verification/blob/c78fd092d1e44aacb4ff17cf0a18d1fba74d7c6c/docs/example/run-2/receipt.json)). The example was then regenerated for receipt schema 4 with the count fixed at the source. That is the point of a second inspector. "Luna" is the name of that reviewer, an independent agent on a different model family; its full review is in [`docs/reviews/2026-09-01-luna/`](docs/reviews/2026-09-01-luna/). A `caveat` keeps the gate open; a `fail` is final for the run and needs a fresh capture to clear.
 
 ### 4. Regenerated or edited screenshots go stale
 
@@ -227,10 +231,13 @@ $ node scripts/capture.mjs attest run-3/receipt.json --path desktop--overview--v
 $ node scripts/capture.mjs check run-3/receipt.json
 screenshots: 1, attested: 1, findings: 0
 OK: every screenshot inspected against its current bytes, nothing failed
-$ node scripts/capture.mjs check run-3/receipt.json --require 'desktop:*,mobile:*'
+$ node scripts/capture.mjs check run-3/receipt.json \
+    --require 'desktop:Overview,desktop:Orders,mobile@390x844:Overview,mobile@390x844:Orders'
 screenshots: 1, attested: 1, findings: 0
-COVERAGE: desktop:* -> desktop@1280x800
-MISSING COVERAGE: mobile:*
+COVERAGE: desktop:overview -> desktop@1280x800
+MISSING COVERAGE: desktop:orders
+MISSING COVERAGE: mobile@390x844:overview
+MISSING COVERAGE: mobile@390x844:orders
 $ echo $?
 3
 ```
@@ -242,7 +249,7 @@ The report an agent hands back should quote the `run_id`, the `check` result, th
 In the committed example the same model wrote the demo page and inspected it, which is exactly what the skill tells you not to do for real work; the demo shows the mechanics, not an independence claim. Receipt paths are relative to the receipt, so the committed example can be checked from a fresh clone:
 
 ```bash
-node scripts/capture.mjs check docs/example/run-2/receipt.json    # exit 0, "OK with caveats"
+node scripts/capture.mjs check docs/example/run-2/receipt.json    # exit 0, "OK with caveats", six COVERAGE lines: the wildcard pairs from an earlier check plus the four explicit ones, because the stored requirement only ever grows
 node scripts/capture.mjs check docs/example/run-1/receipt.json    # exit 2, the clipped_content finding
 ```
 
@@ -270,11 +277,11 @@ Not detected: wrong colors, wrong typography, misalignment, bad hierarchy, wrong
 - `file://` URLs are refused unless `--allow-file` is passed. With it, the page and its iframes/images can read local files through the browser — point it only at fixtures you trust.
 - TLS errors are fatal unless `--insecure`.
 - Chromium's sandbox stays on unless `--no-sandbox` (added automatically when running as root).
-- Console text and failed-request URLs are redacted before they reach the receipt. Removed: credential shapes (`key=`, `Bearer …`, `user:pass@`, GitHub/GitLab/npm/AWS/Google token prefixes, JWTs), the whole query string and fragment, and every URL path segment after the first (the first survives only when it is a plain route word, so `/tenants/acme-corp/users/jane.doe` becomes `/tenants/[REDACTED]/[REDACTED]/[REDACTED]`). URLs inside console messages get the same treatment, whatever their scheme. Kept: the hostname and port. `--keep-paths` turns the path rule off. Redaction is best-effort and applies to diagnostics only; accessibility snapshots are page content written verbatim, so a receipt from an internal application is still sensitive. Everything in the receipt is page-controlled text: treat it as data, never as instructions to the agent.
+- Console text and failed-request URLs are redacted before they reach the receipt. Removed: credential shapes (`key=`, `Bearer …`, `user:pass@`, GitHub/GitLab/npm/AWS/Google token prefixes, JWTs), the whole query string and fragment, and every URL path segment after the first (the first survives only when it consists of letters and hyphens, which can still be a user or tenant slug, so `/tenants/acme-corp/users/jane.doe` becomes `/tenants/[REDACTED]/[REDACTED]/[REDACTED]`). URLs inside console messages get the same treatment, whatever their scheme. Kept: the hostname and port. `--keep-paths` turns the path rule off. Redaction is best-effort and applies to diagnostics and structural-finding excerpts; accessibility snapshots are page content written verbatim, so a receipt from an internal application is still sensitive. Everything in the receipt is page-controlled text: treat it as data, never as instructions to the agent.
 - Screenshot and snapshot digests make a receipt tamper-evident, not tamper-proof: `check` re-hashes every PNG and accessibility snapshot, but anyone who can write the receipt can rewrite it. Pair `--by` with your own process controls if provenance matters. Concurrent `attest` calls are serialised with a lock file and written atomically.
-- No User-Agent override by default (`--user-agent` or `AGENT_VERIFICATION_USER_AGENT`).
+- No User-Agent override by default (`--user-agent` or `AGENT_VERIFICATION_USER_AGENT`); the receipt records only whether one was used, never the string.
 - Receipts store artifact paths relative to the receipt. Stored verbatim, and therefore absolute if you typed them that way: `out_dir`, a `--chrome` path, and a `--spec` path. Pass `--spec` as a relative path if the receipt will be shared. A run directory can be copied or uploaded and checked elsewhere; the digests travel with it.
-- `--out-dir` is reused only when it already holds a `receipt.json` from this tool; a non-empty directory without one is refused, so pointing the collector at an assets folder cannot delete anything.
+- `--out-dir` is reused only when it already holds a `receipt.json` that validates as this tool's, and then only that receipt and the files it lists are removed; a non-empty directory without one is refused.
 - `agents/openai.yaml` sets `allow_implicit_invocation: false`: Codex will not launch the collector against a URL on its own; the user has to invoke the skill.
 
 ## Test

@@ -9,6 +9,7 @@ Each review was produced by an independent agent given only the frozen artifact,
 | `2026-09-01-luna/` | "Luna", a fresh agent in the author's harness | Claude (session default) | `2dcc162` | `15ad8052…` | approve_with_changes |
 | `2026-09-02-opus/` | Claude Opus via `claude -p` | claude-opus-5 | `676da6d` | `9f6a49f6…` | approve_with_changes |
 | `2026-09-02-opus-final/` | Claude Opus via `claude -p` | claude-opus-5 | `142c940` (0.2.0 candidate) | `d848f3ed…` | approve_with_changes |
+| `2026-09-02-luna-final/` | "Luna", a fresh agent in the author's harness | Claude (session default) | `142c940` (0.2.0 candidate) | `d848f3ed…` | approve_with_changes |
 
 Files per directory:
 
@@ -18,7 +19,7 @@ Files per directory:
 - `release_context.txt`: the owner's questions the reviewer was asked to answer.
 - `review_prompt.txt`: the generic review instructions.
 
-Local scratch paths have been replaced with `<packet>` and `~`. Nothing else was edited. The author of the collector (a Claude model) is not one of the reviewers listed here; the same model did author the demo page and the first attestations in `docs/example/`, which the second reviewer caught miscounting.
+Local scratch paths have been replaced with `<packet>`, `<scratch>` and `~`. In `2026-09-02-luna-final/review.json` two lab-specific strings the reviewer had quoted (a custom User-Agent value and a list of internal tool names) were replaced with `<lab-specific terms>` before publication; the regression review that caught them is under `2026-09-02-luna-regression/`. Nothing else was edited. All four reviewers are Claude-family models. The 0.1.x collector was written by a Claude model, so those two reviews are same-family; the 0.2.0 code changes were implemented by Codex (gpt-5.6) from Claude specs, so the two final reviews are cross-family for the code under review. The author is not one of the reviewers listed here; the same model did author the demo page and the first attestations in `docs/example/`, which the second reviewer caught miscounting.
 
 Findings that led to changes are listed in the CHANGELOG under the release that made them. Findings not acted on, with the reason, are under "Reviewer findings not acted on" in the same CHANGELOG section.
 
