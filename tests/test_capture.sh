@@ -36,7 +36,7 @@ assert receipt["status"] == "capture_complete_requires_human_inspection", receip
 assert len(receipt["screenshots"]) == 4, receipt["screenshots"]
 assert not receipt["findings"], receipt["findings"]
 assert not receipt["diagnostics"], receipt["diagnostics"]
-assert receipt["run_id"] and receipt["schema_version"] == 3
+assert receipt["run_id"] and receipt["schema_version"] == 4
 assert all(len(s["sha256"]) == 64 for s in receipt["screenshots"]), "every artifact carries a digest"'
 check "clean page passes"
 
@@ -133,16 +133,16 @@ import hashlib
 assert receipt["spec"]["sha256"] == hashlib.sha256(open(receipt["spec"]["path"],"rb").read()).hexdigest()'
 run 3 check "$test_root/attest/receipt.json"
 grep -q 'UNINSPECTED' "$test_root/stderr" || fail "expected UNINSPECTED"
-run 64 attest "$test_root/attest/receipt.json" --path test--overview--viewport.png --verdict pass --note short
-run 64 attest "$test_root/attest/receipt.json" --path nope.png --verdict pass --note 'this screenshot does not exist'
-run 64 attest "$test_root/attest/receipt.json" --path test--overview--viewport.png --verdict maybe --note 'bad verdict value here'
+run 64 attest "$test_root/attest/receipt.json" --path test--overview--viewport.png --verdict pass --note short --by tester
+run 64 attest "$test_root/attest/receipt.json" --path nope.png --verdict pass --note 'this screenshot does not exist' --by tester
+run 64 attest "$test_root/attest/receipt.json" --path test--overview--viewport.png --verdict maybe --note 'bad verdict value here' --by tester
 run 0 attest "$test_root/attest/receipt.json" --path test--overview--viewport.png --verdict pass --note 'Header 64px, brand blue, matches spec' --by tester
 run 3 check "$test_root/attest/receipt.json"
-run 0 attest "$test_root/attest/receipt.json" --path test--details--viewport.png --verdict caveat --note 'Details card border slightly lighter than spec'
+run 0 attest "$test_root/attest/receipt.json" --path test--details--viewport.png --verdict caveat --note 'Details card border slightly lighter than spec' --by tester
 run 0 check "$test_root/attest/receipt.json"
 grep -q 'OK with caveats' "$test_root/stdout" || fail "expected caveat summary"
 grep -q 'sha256:' "$test_root/stdout" || fail "expected spec hash in check output"
-run 0 attest "$test_root/attest/receipt.json" --path test--details--viewport.png --verdict fail --note 'On second look the card is clipped'
+run 0 attest "$test_root/attest/receipt.json" --path test--details--viewport.png --verdict fail --note 'On second look the card is clipped' --by tester
 run 4 check "$test_root/attest/receipt.json"
 receipt "$test_root/attest/receipt.json" 'assert len(receipt["inspections"]) == 3, "attestations must be append-only"'
 receipt "$test_root/attest/receipt.json" 'assert all(len(i["sha256"]) == 64 and i["run_id"] == receipt["run_id"] for i in receipt["inspections"])'
@@ -150,12 +150,12 @@ check "spec hash recorded; check fails closed until attested; fail verdict rejec
 
 # 10b. Attestations are bound to PNG bytes: a regenerated screenshot invalidates them; a forged receipt is rejected.
 run 0 "$fx/clean.html" --allow-file --viewports 'test=800x600' --screenshot-mode viewport --out-dir "$test_root/digest"
-run 0 attest "$test_root/digest/receipt.json" --path test--page--viewport.png --verdict pass --note 'Overview card renders cleanly'
+run 0 attest "$test_root/digest/receipt.json" --path test--page--viewport.png --verdict pass --note 'Overview card renders cleanly' --by tester
 run 0 check "$test_root/digest/receipt.json"
 printf 'tampered' >> "$test_root/digest/test--page--viewport.png"
 run 3 check "$test_root/digest/receipt.json"
 grep -q 'STALE ATTESTATION' "$test_root/stderr" || fail "expected STALE ATTESTATION"
-run 64 attest "$test_root/digest/receipt.json" --path test--page--viewport.png --verdict pass --note 'attesting changed bytes must fail'
+run 64 attest "$test_root/digest/receipt.json" --path test--page--viewport.png --verdict pass --note 'attesting changed bytes must fail' --by tester
 printf '{"schema_version":3,"run_id":"x","status":"forged","screenshots":[],"findings":[],"inspections":[]}\n' > "$test_root/forged.json"
 run 64 check "$test_root/forged.json"
 printf '{"schema_version":3,"run_id":"x","status":"capture_complete_requires_human_inspection","screenshots":[],"findings":[],"inspections":[]}\n' > "$test_root/empty.json"
@@ -168,7 +168,7 @@ run 0 "$fx/tabs.html" --allow-file --tabs 'Overview,Details' --viewports 'a=800x
   --out-dir "$test_root/concurrent"
 for png in "$test_root/concurrent"/*.png; do
   node "$capture" attest "$test_root/concurrent/receipt.json" --path "$png" --verdict pass \
-    --note "Concurrent inspection of $(basename "$png")" &
+    --note "Concurrent inspection of $(basename "$png")" --by tester &
 done
 wait
 receipt "$test_root/concurrent/receipt.json" 'assert len(receipt["inspections"]) == 8, receipt["inspections"]'
@@ -184,17 +184,17 @@ check "concurrent attestations retained; accessibility snapshot tampering reject
 
 # 10c. attest refuses a failed capture; check reports every failure class and exits with the most severe.
 run 1 http://127.0.0.1:9/ --timeout-ms 5000 --out-dir "$test_root/failed"
-run 64 attest "$test_root/failed/receipt.json" --path x.png --verdict pass --note 'cannot attest a failed capture'
+run 64 attest "$test_root/failed/receipt.json" --path x.png --verdict pass --note 'cannot attest a failed capture' --by tester
 run 1 check "$test_root/failed/receipt.json"
 run 2 "$fx/broken.html" --allow-file --tabs 'Overview,Missing' --viewports 'test=800x600' --screenshot-mode viewport --out-dir "$test_root/multi"
-run 0 attest "$test_root/multi/receipt.json" --path test--overview--viewport.png --verdict fail --note 'clipped card is visible in the PNG'
+run 0 attest "$test_root/multi/receipt.json" --path test--overview--viewport.png --verdict fail --note 'clipped card is visible in the PNG' --by tester
 run 4 check "$test_root/multi/receipt.json"
 grep -q 'STRUCTURAL FINDINGS' "$test_root/stderr" && grep -q 'UNINSPECTED' "$test_root/stderr" && grep -q 'FAILED ATTESTATIONS' "$test_root/stderr" || fail "check must list every failure class"
 check "failed captures cannot be attested; check lists all failure classes, exits most severe"
 
 # 11. check on a receipt with structural findings fails even if attested.
 run 2 "$fx/broken.html" --allow-file --viewports 'test=800x600' --screenshot-mode viewport --out-dir "$test_root/checkbroken"
-run 0 attest "$test_root/checkbroken/receipt.json" --path test--page--viewport.png --verdict pass --note 'looks fine to me honestly'
+run 0 attest "$test_root/checkbroken/receipt.json" --path test--page--viewport.png --verdict pass --note 'looks fine to me honestly' --by tester
 run 2 check "$test_root/checkbroken/receipt.json"
 check "structural findings cannot be attested away"
 
@@ -232,7 +232,7 @@ run 0 "$fx/tabs.html" --allow-file --tabs 'Overview,Details' --viewports 'a=800x
 run 3 check "$test_root/required/receipt.json" --require a:Overview
 grep -q 'UNINSPECTED' "$test_root/stderr" || fail "expected UNINSPECTED for required coverage before attestation"
 for png in "$test_root/required"/*.png; do
-  run 0 attest "$test_root/required/receipt.json" --path "$png" --verdict pass --note 'Required viewport and state render correctly'
+  run 0 attest "$test_root/required/receipt.json" --path "$png" --verdict pass --note 'Required viewport and state render correctly' --by tester
 done
 run 0 check "$test_root/required/receipt.json" --require a:Overview,b:*
 run 3 check "$test_root/required/receipt.json" --require c:Overview
@@ -253,41 +253,41 @@ for png in "$test_root/req-vp"/*.png; do
   run 0 attest "$test_root/req-vp/receipt.json" --path "$png" --verdict pass --by tester --note 'Viewport-only screenshot inspected'
 done
 
-cp "$test_root/req/receipt.json" "$test_root/req-exact.json"
-run 0 check "$test_root/req-exact.json" --require desk:Overview,mob:Details
-cp "$test_root/req/receipt.json" "$test_root/req-wild-state.json"
-run 0 check "$test_root/req-wild-state.json" --require 'desk:*'
-cp "$test_root/req/receipt.json" "$test_root/req-wild-vp.json"
-run 0 check "$test_root/req-wild-vp.json" --require '*:Details'
-cp "$test_root/req/receipt.json" "$test_root/req-wild-both.json"
-run 0 check "$test_root/req-wild-both.json" --require '*:*'
-cp "$test_root/req/receipt.json" "$test_root/req-case.json"
-run 0 check "$test_root/req-case.json" --require DESK:overview
-cp "$test_root/req/receipt.json" "$test_root/req-slug.json"
-run 0 check "$test_root/req-slug.json" --require mob:details
+rm -rf "$test_root/req-exact"; cp -r "$test_root/req" "$test_root/req-exact"
+run 0 check "$test_root/req-exact/receipt.json" --require desk:Overview,mob:Details
+rm -rf "$test_root/req-wild-state"; cp -r "$test_root/req" "$test_root/req-wild-state"
+run 0 check "$test_root/req-wild-state/receipt.json" --require 'desk:*'
+rm -rf "$test_root/req-wild-vp"; cp -r "$test_root/req" "$test_root/req-wild-vp"
+run 0 check "$test_root/req-wild-vp/receipt.json" --require '*:Details'
+rm -rf "$test_root/req-wild-both"; cp -r "$test_root/req" "$test_root/req-wild-both"
+run 0 check "$test_root/req-wild-both/receipt.json" --require '*:*'
+rm -rf "$test_root/req-case"; cp -r "$test_root/req" "$test_root/req-case"
+run 0 check "$test_root/req-case/receipt.json" --require DESK:overview
+rm -rf "$test_root/req-slug"; cp -r "$test_root/req" "$test_root/req-slug"
+run 0 check "$test_root/req-slug/receipt.json" --require mob:details
 
-cp "$test_root/req/receipt.json" "$test_root/req-missing-vp.json"
-run 3 check "$test_root/req-missing-vp.json" --require tab:Overview
+rm -rf "$test_root/req-missing-vp"; cp -r "$test_root/req" "$test_root/req-missing-vp"
+run 3 check "$test_root/req-missing-vp/receipt.json" --require tab:Overview
 grep -q 'MISSING COVERAGE: tab:Overview' "$test_root/stderr" || fail "missing viewport was not reported"
-cp "$test_root/req/receipt.json" "$test_root/req-missing-state.json"
-run 3 check "$test_root/req-missing-state.json" --require desk:Settings
+rm -rf "$test_root/req-missing-state"; cp -r "$test_root/req" "$test_root/req-missing-state"
+run 3 check "$test_root/req-missing-state/receipt.json" --require desk:Settings
 grep -q 'MISSING COVERAGE: desk:Settings' "$test_root/stderr" || fail "missing state was not reported"
-cp "$test_root/req/receipt.json" "$test_root/req-empty-wildcard.json"
-run 3 check "$test_root/req-empty-wildcard.json" --require 'tab:*'
+rm -rf "$test_root/req-empty-wildcard"; cp -r "$test_root/req" "$test_root/req-empty-wildcard"
+run 3 check "$test_root/req-empty-wildcard/receipt.json" --require 'tab:*'
 grep -q 'MISSING COVERAGE: tab:*' "$test_root/stderr" || fail "empty wildcard was not reported"
 
-cp "$test_root/req/receipt.json" "$test_root/req-mixed.json"
-run 3 check "$test_root/req-mixed.json" --require desk:Overview,tab:Overview
+rm -rf "$test_root/req-mixed"; cp -r "$test_root/req" "$test_root/req-mixed"
+run 3 check "$test_root/req-mixed/receipt.json" --require desk:Overview,tab:Overview
 grep -q 'MISSING COVERAGE: tab:Overview' "$test_root/stderr" || fail "mixed missing pair was not reported"
 ! grep 'MISSING COVERAGE:' "$test_root/stderr" | grep -q 'desk:Overview' || fail "present pair appeared on a MISSING line"
 
-cp "$test_root/req/receipt.json" "$test_root/req-repeat.json"
-run 0 check "$test_root/req-repeat.json" --require desk:Overview --require mob:Overview
-run 0 check "$test_root/req-repeat.json" --require desk:Overview --require mob:Overview
-receipt "$test_root/req-repeat.json" 'assert receipt["required_coverage"] == ["desk:Overview", "mob:Overview"], receipt["required_coverage"]'
+rm -rf "$test_root/req-repeat"; cp -r "$test_root/req" "$test_root/req-repeat"
+run 0 check "$test_root/req-repeat/receipt.json" --require desk:Overview --require mob:Overview
+run 0 check "$test_root/req-repeat/receipt.json" --require desk:Overview --require mob:Overview
+receipt "$test_root/req-repeat/receipt.json" 'assert receipt["required_coverage"] == ["desk:Overview", "mob:Overview"], receipt["required_coverage"]'
 
-cp "$test_root/req-vp/receipt.json" "$test_root/req-vp-check.json"
-run 0 check "$test_root/req-vp-check.json" --require '*:*'
+rm -rf "$test_root/req-vp-check"; cp -r "$test_root/req-vp" "$test_root/req-vp-check"
+run 0 check "$test_root/req-vp-check/receipt.json" --require '*:*'
 
 run 0 "$fx/tabs.html" --allow-file --tabs 'Overview,Details' --viewports 'desk=800x600,mob=390x844' \
   --out-dir "$test_root/req-partial"
@@ -301,10 +301,10 @@ run 3 check "$test_root/req-partial/receipt.json" --require 'mob:*'
 grep -q 'UNINSPECTED' "$test_root/stderr" || fail "unattested required viewport was not reported"
 ! grep -q 'MISSING COVERAGE' "$test_root/stderr" || fail "captured but unattested viewport reported as missing"
 
-cp "$test_root/req/receipt.json" "$test_root/req-malformed.json"
-run 64 check "$test_root/req-malformed.json" --require desk
-run 64 check "$test_root/req-malformed.json" --require ':Overview'
-run 64 check "$test_root/req-malformed.json" --require ''
+rm -rf "$test_root/req-malformed"; cp -r "$test_root/req" "$test_root/req-malformed"
+run 64 check "$test_root/req-malformed/receipt.json" --require desk
+run 64 check "$test_root/req-malformed/receipt.json" --require ':Overview'
+run 64 check "$test_root/req-malformed/receipt.json" --require ''
 
 run 0 attest "$test_root/req-partial/receipt.json" --path "$test_root/req-partial/mob--overview--viewport.png" \
   --verdict fail --by tester --note 'Mobile overview visibly fails review'
@@ -312,14 +312,72 @@ run 4 check "$test_root/req-partial/receipt.json" --require 'mob:*'
 grep -q 'FAILED ATTESTATIONS' "$test_root/stderr" || fail "failed attestation was not reported"
 grep -q 'UNINSPECTED' "$test_root/stderr" || fail "uninspected evidence was not reported alongside failure"
 
-cp "$test_root/req/receipt.json" "$test_root/req-sticky.json"
-run 0 check "$test_root/req-sticky.json" --require desk:Overview,mob:Overview
-run 0 check "$test_root/req-sticky.json"
-run 3 check "$test_root/req-sticky.json" --require tab:Overview
+rm -rf "$test_root/req-sticky"; cp -r "$test_root/req" "$test_root/req-sticky"
+run 0 check "$test_root/req-sticky/receipt.json" --require desk:Overview,mob:Overview
+run 0 check "$test_root/req-sticky/receipt.json"
+run 3 check "$test_root/req-sticky/receipt.json" --require tab:Overview
 grep -q 'MISSING COVERAGE: tab:Overview' "$test_root/stderr" || fail "new sticky requirement was not reported"
-run 3 check "$test_root/req-sticky.json"
+run 3 check "$test_root/req-sticky/receipt.json"
 grep -q 'MISSING COVERAGE: tab:Overview' "$test_root/stderr" || fail "stored requirement was not enforced"
-receipt "$test_root/req-sticky.json" 'assert receipt["required_coverage"] == ["desk:Overview", "mob:Overview", "tab:Overview"], receipt["required_coverage"]'
+receipt "$test_root/req-sticky/receipt.json" 'assert receipt["required_coverage"] == ["desk:Overview", "mob:Overview", "tab:Overview"], receipt["required_coverage"]'
 check "coverage requirement combinations"
+
+# 18. Receipt artifact paths are portable across copied run directories.
+run 0 "$fx/clean.html" --allow-file --viewports 'portable=400x300' --screenshot-mode viewport \
+  --no-aria-snapshot --out-dir "$test_root/portable"
+receipt "$test_root/portable/receipt.json" '
+assert receipt["schema_version"] == 4 and receipt["out_dir"]
+assert all("/" not in shot["path"] for shot in receipt["screenshots"]), receipt["screenshots"]'
+cp -R "$test_root/portable" "$test_root/portable-copy"
+run 3 check "$test_root/portable/receipt.json"
+grep -q 'UNINSPECTED' "$test_root/stderr" || fail "original portable receipt should be uninspected"
+run 3 check "$test_root/portable-copy/receipt.json"
+grep -q 'UNINSPECTED' "$test_root/stderr" || fail "copied portable receipt should be uninspected"
+run 0 attest "$test_root/portable-copy/receipt.json" --path portable--page--viewport.png \
+  --verdict pass --note 'Copied screenshot renders correctly' --by tester
+run 0 check "$test_root/portable-copy/receipt.json"
+printf x >> "$test_root/portable-copy/portable--page--viewport.png"
+run 3 check "$test_root/portable-copy/receipt.json"
+grep -q 'STALE ATTESTATION' "$test_root/stderr" || fail "copied receipt did not detect stale evidence"
+check "relative artifact paths survive copied run directories"
+
+# 19. Reuse cleanup refuses foreign directories and safely replaces prior capture artifacts.
+mkdir -p "$test_root/foreign/sub--dir--full.png"
+printf 'keep me' > "$test_root/foreign/brand--logo--full.png"
+run 64 "$fx/clean.html" --allow-file --viewports 'test=400x300' --screenshot-mode viewport \
+  --out-dir "$test_root/foreign"
+grep -q 'refusing to reuse non-empty --out-dir without a prior receipt.json' "$test_root/stderr" || fail "missing safe-reuse refusal"
+[ -f "$test_root/foreign/brand--logo--full.png" ] || fail "foreign matching file was removed"
+[ -d "$test_root/foreign/sub--dir--full.png" ] || fail "foreign matching directory was removed"
+mkdir "$test_root/reuse-safe"
+run 0 "$fx/clean.html" --allow-file --viewports 'old=400x300' --screenshot-mode viewport \
+  --no-aria-snapshot --out-dir "$test_root/reuse-safe"
+run 0 "$fx/clean.html" --allow-file --viewports 'new=400x300' --screenshot-mode viewport \
+  --no-aria-snapshot --out-dir "$test_root/reuse-safe"
+[ ! -e "$test_root/reuse-safe/old--page--viewport.png" ] || fail "old artifact survived safe reuse"
+[ -f "$test_root/reuse-safe/new--page--viewport.png" ] || fail "new artifact missing after safe reuse"
+[ "$(find "$test_root/reuse-safe" -mindepth 1 -maxdepth 1 | wc -l)" -eq 2 ] || fail "safe reuse left unexpected artifacts"
+check "out-dir cleanup preserves foreign content and handles safe reuse"
+
+# 20. Attestation identity and substantive notes are enforced at write and check time.
+run 0 "$fx/clean.html" --allow-file --viewports 'test=400x300' --screenshot-mode viewport \
+  --no-aria-snapshot --out-dir "$test_root/invalid-attestation"
+run 64 attest "$test_root/invalid-attestation/receipt.json" --path test--page--viewport.png \
+  --verdict pass --note 'This note is long enough'
+grep -q 'attest requires --by <inspector name>' "$test_root/stderr" || fail "missing required-inspector error"
+run 0 attest "$test_root/invalid-attestation/receipt.json" --path test--page--viewport.png \
+  --verdict pass --note 'This note is long enough' --by tester
+python3 - "$test_root/invalid-attestation/receipt.json" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path) as handle:
+    receipt = json.load(handle)
+receipt["inspections"][0]["note"] = "x"
+with open(path, "w") as handle:
+    json.dump(receipt, handle)
+PY
+run 4 check "$test_root/invalid-attestation/receipt.json"
+grep -q 'INVALID ATTESTATION: test--page--viewport.png (note too short or no inspector)' "$test_root/stderr" || fail "invalid attestation was not reported"
+check "attest requires an inspector and check rejects invalid records"
 
 echo "agent-verification: $pass checks passed"
