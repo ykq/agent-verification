@@ -1,6 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
+
+Code changes in this release were implemented by Codex (gpt-5.6) from specs written by Claude, after two independent pre-release audits (`docs/reviews/`). Claude ran the suite and corrected two spec mistakes noted in the commit messages.
+
+- Receipt schema 4: artifact paths are stored relative to the receipt and a top-level `out_dir` records where the run happened; `attest`/`check` resolve paths against the receipt's directory, so a copied or uploaded run directory can be checked elsewhere. Schema 3 receipts are still read. `--spec` is stored as typed.
+- `check --require 'viewport:state,...'` declares the coverage that must be captured and attested (`*` wildcards on either side); missing pairs fail with `MISSING COVERAGE`. The requirement is written to the receipt and every later `check` enforces the union of everything ever required. It never relaxes the rule that every captured PNG needs its own attestation.
+- URL path segments in diagnostics are redacted (only a plain first route word survives); URLs of any scheme inside console text are redacted the same way; `--keep-paths` opts out.
+- `attest` takes a lock on the receipt and writes atomically; eight concurrent attestations are all retained. `check`'s coverage write uses the same path.
+- `check` re-hashes accessibility snapshots and reports `TAMPERED EVIDENCE` when one changed.
+- `attest` requires `--by`; `check` reports `INVALID ATTESTATION` for records with no inspector or a note under ten characters.
+- `--out-dir` reuse is refused for a non-empty directory that holds no prior `receipt.json`; cleanup skips directories and non-matching files.
+- `agents/openai.yaml`: `allow_implicit_invocation: false`.
+- Docs: walkthrough regenerated under schema 4 with a coverage-narrowing step; review packets committed under `docs/reviews/`.
+
+## 0.1.x (unreleased docs revisions)
 
 - Second pre-release audit (Claude Opus, raw review in `docs/reviews/2026-09-02-opus/`): `agents/openai.yaml` no longer allows implicit invocation; SKILL.md says to run `attest` calls one at a time (interim mitigation for the lost-update finding); README states that receipts embed absolute paths; the fixed demo page is committed under `docs/demo/fixed/` and the walkthrough reproduce block covers both runs; `package-lock.json` regenerated for Node 20; review packets committed under `docs/reviews/` with a README, so the "audited before release" claim is checkable.
 - Owner decisions on reviewer questions: `check` will accept a required viewport/state coverage list (0.2); URL path segments will be redacted in diagnostics (0.2); implicit invocation off; reviews published.

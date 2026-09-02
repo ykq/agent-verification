@@ -1,6 +1,6 @@
 {
   "name": "agent-verification",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Evidence receipts for agent claims: multi-viewport screenshots, accessibility snapshots, structural checks, and a JSON receipt for visual verification.",
   "private": true,
   "type": "module",
