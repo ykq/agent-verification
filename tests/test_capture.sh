@@ -77,6 +77,17 @@ for needle in OPAQUEBEARER111 CLIENTSEC222 AWSSEC333 words999 DBPASS555 dbuser G
 done
 check "console and URL secrets redacted"
 
+# 5b. Identifiers in URL path segments are redacted in request and console diagnostics unless explicitly retained.
+run 0 "$fx/leak3.html" --allow-file --viewports 'test=400x300' --screenshot-mode viewport --out-dir "$test_root/leak3"
+receipt "$test_root/leak3/receipt.json" '
+serialised = json.dumps(receipt["diagnostics"])
+assert not any(needle in serialised for needle in ["jane.doe", "123-45-6789", "acme-corp", "private-notes", "ssn-"]), serialised
+assert "dashboard.acme-internal.example" in serialised, serialised
+assert "/tenants/[REDACTED]" in serialised, serialised'
+run 0 "$fx/leak3.html" --allow-file --keep-paths --viewports 'test=400x300' --screenshot-mode viewport --out-dir "$test_root/leak3-keep"
+receipt "$test_root/leak3-keep/receipt.json" 'assert "private-notes" in json.dumps(receipt["diagnostics"]), receipt["diagnostics"]'
+check "URL path identifiers redacted unless --keep-paths is set"
+
 # 6. file:// refused without --allow-file; no receipt written.
 run 64 "$fx/clean.html" --out-dir "$test_root/nofile"
 grep -q 'allow-file' "$test_root/stderr" || fail "expected --allow-file hint"

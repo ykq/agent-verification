@@ -50,6 +50,7 @@ Browser:
 
 Security (all off by default):
   --insecure                   Ignore TLS certificate errors
+  --keep-paths                 Keep URL path segments in diagnostics (they may contain identifiers)
   --no-sandbox                 Pass --no-sandbox to the browser (root/containers)
   --allow-file                 Permit file:// URLs (the page can read local files)
 
@@ -83,9 +84,9 @@ function parseArgs(argv) {
     chrome: process.env.CHROME_BIN || '',
     userAgent: process.env.AGENT_VERIFICATION_USER_AGENT || '',
     waitUntil: 'networkidle', waitMs: 300, timeoutMs: 60000,
-    insecure: false, noSandbox: false, allowFile: false, spec: '',
+    insecure: false, keepPaths: false, noSandbox: false, allowFile: false, spec: '',
   };
-  const booleans = { '--no-aria-snapshot': ['ariaSnapshot', false], '--insecure': ['insecure', true], '--no-sandbox': ['noSandbox', true], '--allow-file': ['allowFile', true] };
+  const booleans = { '--no-aria-snapshot': ['ariaSnapshot', false], '--insecure': ['insecure', true], '--keep-paths': ['keepPaths', true], '--no-sandbox': ['noSandbox', true], '--allow-file': ['allowFile', true] };
   for (let i = 1; i < argv.length; i += 1) {
     const flag = argv[i];
     if (booleans[flag]) { const [key, value] = booleans[flag]; config[key] = value; continue; }
@@ -166,8 +167,10 @@ const TOKEN_SHAPES = [
   /\b(?:github_pat_|glpat-|npm_|AKIA|ASIA|AIza|ya29\.)[A-Za-z0-9_-]{8,}/g,
   /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g,
 ];
+let keepPaths = false;
 function redact(text) {
   let out = String(text ?? '');
+  out = out.replace(/[a-z][a-z0-9+.-]*:\/\/[^\s'"<>)\]]+/gi, (match) => redactUrl(match));
   out = out.replace(USERINFO, '$1[REDACTED]:[REDACTED]@');
   out = out.replace(AUTH_SCHEME, '$1 [REDACTED]'); // before key handling, which would otherwise eat the scheme word
   out = out.replace(KEY_ASSIGNMENT, '$1$2[REDACTED]');
@@ -179,7 +182,17 @@ function redactUrl(raw) {
     const url = new URL(raw);
     if (url.search) url.search = '?REDACTED';
     url.hash = ''; url.username = ''; url.password = '';
-    url.pathname = redact(url.pathname);
+    if (keepPaths) {
+      url.pathname = redact(url.pathname);
+    } else {
+      const segments = url.pathname.split('/');
+      const first = segments.findIndex(Boolean);
+      url.pathname = segments.map((segment, index) => {
+        if (!segment) return segment;
+        if (index === first && /^[A-Za-z][A-Za-z-]{0,31}$/.test(segment)) return segment;
+        return '[REDACTED]';
+      }).join('/');
+    }
     return url.toString();
   } catch { return redact(raw); }
 }
@@ -295,6 +308,7 @@ try { config = parseArgs(argv); } catch (error) {
   process.stderr.write(`error: ${error.message}\n\n${USAGE}`);
   process.exit(EXIT.usage);
 }
+keepPaths = config.keepPaths;
 
 if (config.outDir) {
   try { mkdirSync(config.outDir, { recursive: true }); } catch (error) { process.stderr.write(`error: cannot create --out-dir: ${error.message}\n`); process.exit(EXIT.usage); }
@@ -319,7 +333,7 @@ const receipt = {
     viewports: config.viewports, tabs: config.tabs, screenshot_mode: config.screenshotMode, aria_snapshot: config.ariaSnapshot,
     view_selector: config.viewSelector || null, content_selector: config.contentSelector, ready_selector: config.readySelector || null,
     wait_until: config.waitUntil, wait_ms: config.waitMs, timeout_ms: config.timeoutMs, user_agent: config.userAgent || null,
-    chrome: config.chrome || null, insecure: config.insecure, allow_file: config.allowFile,
+    chrome: config.chrome || null, insecure: config.insecure, keep_paths: config.keepPaths, allow_file: config.allowFile,
   },
   screenshots: [],
   findings: [],
