@@ -380,4 +380,46 @@ run 4 check "$test_root/invalid-attestation/receipt.json"
 grep -q 'INVALID ATTESTATION: test--page--viewport.png (note too short or no inspector)' "$test_root/stderr" || fail "invalid attestation was not reported"
 check "attest requires an inspector and check rejects invalid records"
 
+# 21. Coverage requirements survive reuse, support pinned dimensions, and tolerate read-only receipts.
+run 0 "$fx/tabs.html" --allow-file --tabs 'Overview,Details' --viewports 'desk=800x600,mob=390x844' \
+  --screenshot-mode viewport --out-dir "$test_root/carry"
+for png in "$test_root/carry"/*.png; do
+  run 0 attest "$test_root/carry/receipt.json" --path "$png" --verdict pass --by tester --note 'Coverage carry screenshot inspected'
+done
+run 0 check "$test_root/carry/receipt.json" --require 'desk:*,mob:*'
+run 0 "$fx/tabs.html" --allow-file --tabs Overview --viewports 'desk=800x600' \
+  --screenshot-mode viewport --out-dir "$test_root/carry"
+receipt "$test_root/carry/receipt.json" 'assert receipt["required_coverage"] == ["desk:*", "mob:*"], receipt'
+run 0 attest "$test_root/carry/receipt.json" --path desk--overview--viewport.png --verdict pass --by tester \
+  --note 'Narrow recapture screenshot inspected'
+run 3 check "$test_root/carry/receipt.json"
+grep -q 'MISSING COVERAGE: mob:\*' "$test_root/stderr" || fail "reused coverage requirement was not enforced"
+
+run 0 "$fx/tabs.html" --allow-file --tabs 'Overview' --viewports 'desk=800x600,mob=800x600' \
+  --screenshot-mode viewport --out-dir "$test_root/pinned-wrong"
+for png in "$test_root/pinned-wrong"/*.png; do
+  run 0 attest "$test_root/pinned-wrong/receipt.json" --path "$png" --verdict pass --by tester --note 'Pinned coverage screenshot inspected'
+done
+run 0 check "$test_root/pinned-wrong/receipt.json" --require 'mob:Overview'
+grep -q 'COVERAGE: mob:Overview -> mob@800x600' "$test_root/stdout" || fail "coverage satisfier was not printed"
+run 3 check "$test_root/pinned-wrong/receipt.json" --require 'mob@390x844:Overview'
+grep -q 'MISSING COVERAGE: mob@390x844:Overview' "$test_root/stderr" || fail "pinned dimensions were not enforced"
+run 64 check "$test_root/pinned-wrong/receipt.json" --require 'mob@abc:Overview'
+run 64 check "$test_root/pinned-wrong/receipt.json" --require 'mob@0x10:Overview'
+
+run 0 "$fx/tabs.html" --allow-file --tabs 'Overview' --viewports 'mob=390x844' \
+  --screenshot-mode viewport --out-dir "$test_root/pinned-right"
+for png in "$test_root/pinned-right"/*.png; do
+  run 0 attest "$test_root/pinned-right/receipt.json" --path "$png" --verdict pass --by tester --note 'Correct mobile dimensions inspected'
+done
+run 0 check "$test_root/pinned-right/receipt.json" --require '*@390x844:*'
+
+cp -R "$test_root/req" "$test_root/read-only-receipt"
+chmod a-w "$test_root/read-only-receipt"
+run 0 check "$test_root/read-only-receipt/receipt.json" --require 'desk:*'
+grep -q 'read-only receipt' "$test_root/stderr" || fail "read-only receipt warning was not printed"
+! grep -q '^    at ' "$test_root/stderr" || fail "read-only receipt emitted a stack trace"
+chmod u+w "$test_root/read-only-receipt"
+check "coverage survives reuse, pins dimensions, reports satisfiers, and tolerates read-only receipts"
+
 echo "agent-verification: $pass checks passed"

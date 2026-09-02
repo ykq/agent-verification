@@ -1,0 +1,9 @@
+Perform an independent adversarial review of the attached artifact.
+Do not edit or implement anything. Do not assume another reviewer is correct.
+Return JSON matching review-output.schema.json and echo artifact_sha256 exactly.
+For every finding give severity, exact location, concrete failure mode, the smallest safe
+amendment, and a mechanical acceptance test. Examine correctness; temporal/causal leakage;
+identity, provenance, and coverage; append-only correction and idempotency; concurrency and
+scale; migration/cutover safety; reproducibility; and domain-specific silent failures.
+Separate engineering amendments from questions that require owner judgment. A verdict is
+review evidence, not authorization to execute.

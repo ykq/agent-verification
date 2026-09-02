@@ -2,10 +2,10 @@
 
 ## 0.2.0
 
-Code changes in this release were implemented by Codex (gpt-5.6) from specs written by Claude, after two independent pre-release audits (`docs/reviews/`). Claude ran the suite and corrected two spec mistakes noted in the commit messages.
+First public release. Code changes in this release were implemented by Codex (gpt-5.6) from specs written by Claude, after two independent pre-release audits (`docs/reviews/`). Claude ran the suite and corrected two spec mistakes noted in the commit messages.
 
 - Receipt schema 4: artifact paths are stored relative to the receipt and a top-level `out_dir` records where the run happened; `attest`/`check` resolve paths against the receipt's directory, so a copied or uploaded run directory can be checked elsewhere. Schema 3 receipts are still read. `--spec` is stored as typed.
-- `check --require 'viewport:state,...'` declares the coverage that must be captured and attested (`*` wildcards on either side); missing pairs fail with `MISSING COVERAGE`. The requirement is written to the receipt and every later `check` enforces the union of everything ever required. It never relaxes the rule that every captured PNG needs its own attestation.
+- `check --require 'viewport:state,...'` declares the coverage that must be captured and attested (`*` wildcards on either side); missing pairs fail with `MISSING COVERAGE`. The requirement is written to the receipt, survives a re-capture into the same out-dir, and every later `check` enforces the union of everything ever required. A pair may pin the rendered size (`mobile@390x844:Overview`), and `check` prints `COVERAGE: <pair> -> <label>@<size>` for each satisfied pair so a mislabelled viewport is visible. On a read-only receipt the requirement is enforced in memory with a warning instead of a crash. It never relaxes the rule that every captured PNG needs its own attestation.
 - URL path segments in diagnostics are redacted (only a plain first route word survives); URLs of any scheme inside console text are redacted the same way; `--keep-paths` opts out.
 - `attest` takes a lock on the receipt and writes atomically; eight concurrent attestations are all retained. `check`'s coverage write uses the same path.
 - `check` re-hashes accessibility snapshots and reports `TAMPERED EVIDENCE` when one changed.
@@ -13,6 +13,14 @@ Code changes in this release were implemented by Codex (gpt-5.6) from specs writ
 - `--out-dir` reuse is refused for a non-empty directory that holds no prior `receipt.json`; cleanup skips directories and non-matching files.
 - `agents/openai.yaml`: `allow_implicit_invocation: false`.
 - Docs: walkthrough regenerated under schema 4 with a coverage-narrowing step; review packets committed under `docs/reviews/`.
+
+### Reviewer findings not acted on in 0.2.0, and why
+
+- Reject notes that are byte-identical across screenshots (Opus, 676da6d). Not adopted: "Full page identical to viewport" is a legitimate note for a full-page PNG whose content fits the viewport, and it recurs by design. A second inspector, not a string rule, is the answer to lazy notes.
+- Record the browser executable and version in the receipt, and prefer bundled Chromium over a system Chrome (Luna, 2dcc162). Deferred to 0.3: worth doing, but it changes CI's tested path and needs its own audit.
+- Suppress `out_dir` from the receipt (Opus, 142c940). Deferred: documented under Security defaults instead; a flag is planned once there is a second reason to add one.
+- Move the coverage requirement out of the receipt into a task-level policy file (Opus, 142c940). Not adopted for 0.2.0: the requirement now survives out-dir reuse and is documented as per-receipt; CI and harnesses should pass `--require` on every check, which the lab overlay of the author's own setup mandates.
+- Make `check` non-mutating (Opus, 142c940). Not adopted: writing the requirement into the receipt is what makes it sticky evidence. `check` now degrades to an in-memory requirement with a warning when the receipt is read-only.
 
 ## 0.1.x (unreleased docs revisions)
 
@@ -28,4 +36,4 @@ Code changes in this release were implemented by Codex (gpt-5.6) from specs writ
 - Receipt schema 3: every artifact carries its sha256; attestations are bound to digest + run_id; `check` detects tampered or regenerated screenshots, rejects forged/empty receipts, and reports every failing gate.
 - Fixes from the pre-release cross-model audit (Codex gpt-5.6 + Claude): lazy images no longer hang past `--timeout-ms`; `state_unchanged` compares before/after each click and is disabled on self-mutating pages; redaction covers `Bearer`, `client_secret`-style keys, `user:pass@`, token prefixes, and URL path segments; `[role=tab]` outranks same-text links; clipping scans `<body>` when no `<main>` exists; value flags no longer swallow the next flag; duplicate viewport/tab names are rejected; stale PNGs are cleared from a reused out-dir.
 
-- Initial public release: `capture.mjs` evidence collector, `attest`/`check` fail-closed inspection gate, `--spec` hashing, fixture tests, CI, visual and transaction verification workflows.
+- Initial release, private: `capture.mjs` evidence collector, `attest`/`check` fail-closed inspection gate, `--spec` hashing, fixture tests, CI, visual and transaction verification workflows.

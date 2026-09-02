@@ -309,7 +309,11 @@ function check(argv) {
       const pair = raw.trim();
       const parts = pair.split(':');
       if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) throw new UsageError(`malformed required coverage pair: ${pair || raw}`);
-      const canonical = `${parts[0].trim()}:${parts[1].trim()}`;
+      const viewportPart = parts[0].trim();
+      const pinned = viewportPart.match(/^(.+?)@([0-9]+)x([0-9]+)$/);
+      if (viewportPart.includes('@') && !pinned) throw new UsageError(`malformed required coverage pair: ${pair || raw}`);
+      if (pinned && (Number(pinned[2]) <= 0 || Number(pinned[3]) <= 0)) throw new UsageError(`malformed required coverage pair: ${pair || raw}`);
+      const canonical = `${viewportPart}:${parts[1].trim()}`;
       if (!requiredCoverage.includes(canonical)) requiredCoverage.push(canonical);
     }
   }
@@ -320,17 +324,22 @@ function check(argv) {
     if (!enforcedCoverage.includes(requirement)) enforcedCoverage.push(requirement);
   }
   if (enforcedCoverage.length > storedCoverage.length) {
-    receipt = withReceiptLock(receiptPath, () => {
-      const current = readReceipt(receiptPath);
-      const currentCoverage = Array.isArray(current.required_coverage) ? current.required_coverage : [];
-      for (const requirement of requiredCoverage) {
-        if (!currentCoverage.includes(requirement)) currentCoverage.push(requirement);
-      }
-      current.required_coverage = currentCoverage;
-      writeReceiptAtomic(receiptPath, current);
-      return current;
-    });
-    enforcedCoverage.splice(0, enforcedCoverage.length, ...receipt.required_coverage);
+    try {
+      receipt = withReceiptLock(receiptPath, () => {
+        const current = readReceipt(receiptPath);
+        const currentCoverage = Array.isArray(current.required_coverage) ? current.required_coverage : [];
+        for (const requirement of requiredCoverage) {
+          if (!currentCoverage.includes(requirement)) currentCoverage.push(requirement);
+        }
+        current.required_coverage = currentCoverage;
+        writeReceiptAtomic(receiptPath, current);
+        return current;
+      });
+      enforcedCoverage.splice(0, enforcedCoverage.length, ...receipt.required_coverage);
+    } catch (error) {
+      if (!['EACCES', 'EROFS', 'EPERM'].includes(error?.code)) throw error;
+      process.stderr.write(`warning: cannot record --require on a read-only receipt: ${receiptPath}\n`);
+    }
   }
   const shots = pngShots(receipt);
   const problems = []; // { code, line }
@@ -341,16 +350,26 @@ function check(argv) {
     if (currentDigest(artifactPath(receiptPath, snapshot.path)) !== snapshot.sha256) problems.push({ code: EXIT.uninspected, line: `TAMPERED EVIDENCE: ${snapshot.path} (bytes changed since capture)` });
   }
 
+  const coverageLines = [];
   for (const requirement of enforcedCoverage) {
     const [rawViewport, rawState] = requirement.split(':');
-    const viewport = rawViewport === '*' ? '*' : slug(rawViewport);
+    const pinned = rawViewport.match(/^(.+?)@([0-9]+)x([0-9]+)$/);
+    const viewportLabel = pinned ? pinned[1] : rawViewport;
+    const width = pinned ? Number(pinned[2]) : null;
+    const height = pinned ? Number(pinned[3]) : null;
+    const viewport = viewportLabel === '*' ? '*' : slug(viewportLabel);
     const state = rawState === '*' ? '*' : slug(rawState);
     const matches = shots.filter((shot) => {
       const shotViewport = slug(shot.viewport?.name);
       const shotState = slug(shot.state);
-      return (viewport === '*' || viewport === shotViewport) && (state === '*' || state === shotState);
+      return (viewport === '*' || viewport === shotViewport) && (state === '*' || state === shotState)
+        && (width === null || (shot.viewport?.width === width && shot.viewport?.height === height));
     });
     if (!matches.length) problems.push({ code: EXIT.uninspected, line: `MISSING COVERAGE: ${requirement}` });
+    else {
+      const satisfiers = [...new Set(matches.map((shot) => `${shot.viewport.name}@${shot.viewport.width}x${shot.viewport.height}`))].sort();
+      coverageLines.push(`COVERAGE: ${requirement} -> ${satisfiers.join(', ')}`);
+    }
   }
 
   const invalidAttestations = receipt.inspections.filter((record) => !validNote(record.note) || typeof record.by !== 'string' || !record.by.trim());
@@ -379,6 +398,7 @@ function check(argv) {
     `receipt: ${receiptPath}`, `run_id: ${receipt.run_id}`, `status: ${receipt.status}`,
     `spec: ${receipt.spec?.sha256 ? `${receipt.spec.path} sha256:${receipt.spec.sha256.slice(0, 12)}` : 'none recorded'}`,
     `screenshots: ${shots.length}, attested: ${attested}, findings: ${receipt.findings.length}`,
+    ...coverageLines,
     ...problems.map((p) => p.line),
   ];
   if (!problems.length) lines.push(valid.some((record) => record.verdict === 'caveat') ? 'OK with caveats' : 'OK: every screenshot inspected against its current bytes, nothing failed');
@@ -405,6 +425,7 @@ try { config = parseArgs(argv); } catch (error) {
 }
 keepPaths = config.keepPaths;
 
+let carriedRequiredCoverage;
 if (config.outDir) {
   try {
     mkdirSync(config.outDir, { recursive: true });
@@ -414,6 +435,7 @@ if (config.outDir) {
       try {
         const parsed = JSON.parse(readFileSync(join(config.outDir, 'receipt.json'), 'utf8'));
         priorReceipt = typeof parsed?.schema_version === 'number';
+        if (Array.isArray(parsed?.required_coverage) && parsed.required_coverage.every((entry) => typeof entry === 'string')) carriedRequiredCoverage = parsed.required_coverage;
       } catch { /* not a reusable capture directory */ }
       if (!priorReceipt) throw new UsageError(`refusing to reuse non-empty --out-dir without a prior receipt.json: ${config.outDir}`);
       for (const name of names) {
@@ -449,6 +471,7 @@ const receipt = {
   findings: [],
   diagnostics: [],
 };
+if (carriedRequiredCoverage) receipt.required_coverage = carriedRequiredCoverage;
 
 let browser;
 try {

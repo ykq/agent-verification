@@ -8,6 +8,7 @@ Each review was produced by an independent agent given only the frozen artifact,
 |---|---|---|---|---|---|
 | `2026-09-01-luna/` | "Luna", a fresh agent in the author's harness | Claude (session default) | `2dcc162` | `15ad8052…` | approve_with_changes |
 | `2026-09-02-opus/` | Claude Opus via `claude -p` | claude-opus-5 | `676da6d` | `9f6a49f6…` | approve_with_changes |
+| `2026-09-02-opus-final/` | Claude Opus via `claude -p` | claude-opus-5 | `142c940` (0.2.0 candidate) | `d848f3ed…` | approve_with_changes |
 
 Files per directory:
 
@@ -19,4 +20,18 @@ Files per directory:
 
 Local scratch paths have been replaced with `<packet>` and `~`. Nothing else was edited. The author of the collector (a Claude model) is not one of the reviewers listed here; the same model did author the demo page and the first attestations in `docs/example/`, which the second reviewer caught miscounting.
 
-Findings that led to changes are listed in the CHANGELOG. Findings deferred to a later release, and the owner's answers to reviewer questions, are recorded there as well.
+Findings that led to changes are listed in the CHANGELOG under the release that made them. Findings not acted on, with the reason, are under "Reviewer findings not acted on" in the same CHANGELOG section.
+
+## Git history scan
+
+No reviewer saw git history; each received a `git archive` of one commit. Before the public flip the maintainer scanned every blob reachable from every ref, plus all commit messages and author fields, with the command below. Result on 2026-09-02 over 14 commits and 89 blobs: zero hits outside the allow-list (the author's own attribution, the fake credentials in `tests/fixtures/`, and a reviewer's own mention of the search terms). Re-run it yourself on a clone.
+
+```bash
+git rev-list --all --objects | cut -d' ' -f1 \
+  | git cat-file --batch-check='%(objecttype) %(objectname)' | awk '$1=="blob"{print $2}' | sort -u \
+  | while read b; do git cat-file -p "$b" \
+      | grep -a -n -i -E '/home/|ts\.net|@[a-z0-9.-]+\.[a-z]{2,}|sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_|AKIA[0-9A-Z]{16}|xox[baprs]-|BEGIN [A-Z ]*PRIVATE KEY|tskey-' \
+      | sed "s|^|$b: |"; done
+git log --all --format='%an <%ae> %cn <%ce>' | sort -u
+```
+
