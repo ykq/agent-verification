@@ -207,4 +207,19 @@ run 0 "$fx/clean.html" --allow-file --viewports 'b=400x300' --screenshot-mode vi
 [ ! -e "$test_root/reuse/a--overview--viewport.png" ] || fail "stale PNG survived"
 check "stale evidence cleared from a reused out-dir"
 
+# 16. Required coverage prevents a reduced capture from silently omitting declared viewport/state evidence.
+run 0 "$fx/tabs.html" --allow-file --tabs 'Overview,Details' --viewports 'a=800x600,b=390x844' \
+  --screenshot-mode viewport --out-dir "$test_root/required"
+run 3 check "$test_root/required/receipt.json" --require a:Overview
+grep -q 'UNINSPECTED' "$test_root/stderr" || fail "expected UNINSPECTED for required coverage before attestation"
+for png in "$test_root/required"/*.png; do
+  run 0 attest "$test_root/required/receipt.json" --path "$png" --verdict pass --note 'Required viewport and state render correctly'
+done
+run 0 check "$test_root/required/receipt.json" --require a:Overview,b:*
+run 3 check "$test_root/required/receipt.json" --require c:Overview
+grep -q 'MISSING COVERAGE: c:Overview' "$test_root/stderr" || fail "expected missing required coverage"
+run 64 check "$test_root/required/receipt.json" --require nonsense
+receipt "$test_root/required/receipt.json" 'assert "required_coverage" in receipt, receipt'
+check "required coverage is recorded and gates omitted viewport/state evidence"
+
 echo "agent-verification: $pass checks passed"

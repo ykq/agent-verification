@@ -57,6 +57,7 @@ Security (all off by default):
 Inspection (the receipt fails closed until every screenshot is attested):
   attest                       Append an inspection record bound to the PNG's sha256; --note required
   check                        Report every gate failure; exit with the most severe
+  --require V:S,...            check only: viewport:state pairs that must be captured and attested (* = all)
 
 Environment: CHROME_BIN (browser executable), AGENT_VERIFICATION_USER_AGENT (User-Agent override),
              PLAYWRIGHT_PATH (project directory whose node_modules holds playwright)
@@ -253,13 +254,41 @@ function attest(argv) {
 function check(argv) {
   const receiptPath = argv[0];
   if (!receiptPath || receiptPath.startsWith('--')) throw new UsageError('check requires a receipt path');
-  if (argv.length > 1) throw new UsageError(`unknown option: ${argv[1]}`);
+  const requiredCoverage = [];
+  for (let i = 1; i < argv.length; i += 2) {
+    const flag = argv[i]; const value = argv[i + 1];
+    if (flag !== '--require') throw new UsageError(`unknown option: ${flag}`);
+    if (value === undefined || value.startsWith('--')) throw new UsageError('--require requires a value');
+    for (const raw of value.split(',')) {
+      const pair = raw.trim();
+      const parts = pair.split(':');
+      if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) throw new UsageError(`malformed required coverage pair: ${pair || raw}`);
+      const canonical = `${parts[0].trim()}:${parts[1].trim()}`;
+      if (!requiredCoverage.includes(canonical)) requiredCoverage.push(canonical);
+    }
+  }
   const receipt = readReceipt(receiptPath);
+  if (requiredCoverage.length && JSON.stringify(receipt.required_coverage) !== JSON.stringify(requiredCoverage)) {
+    receipt.required_coverage = requiredCoverage;
+    writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`);
+  }
   const shots = pngShots(receipt);
   const problems = []; // { code, line }
   if (receipt.status === 'capture_failed') problems.push({ code: EXIT.capture_failed, line: `CAPTURE FAILED: ${receipt.error}` });
   if (receipt.findings.length) problems.push({ code: EXIT.structural_failures, line: `STRUCTURAL FINDINGS: ${receipt.findings.map((f) => `${f.type}@${f.viewport}/${f.state}`).join(', ')}` });
   if (!shots.length && receipt.status !== 'capture_failed') problems.push({ code: EXIT.uninspected, line: 'NO SCREENSHOTS: the receipt records no PNG evidence' });
+
+  for (const requirement of requiredCoverage) {
+    const [rawViewport, rawState] = requirement.split(':');
+    const viewport = rawViewport === '*' ? '*' : slug(rawViewport);
+    const state = rawState === '*' ? '*' : slug(rawState);
+    const matches = shots.filter((shot) => {
+      const shotViewport = slug(shot.viewport?.name);
+      const shotState = slug(shot.state);
+      return (viewport === '*' || viewport === shotViewport) && (state === '*' || state === shotState);
+    });
+    if (!matches.length) problems.push({ code: EXIT.uninspected, line: `MISSING COVERAGE: ${requirement}` });
+  }
 
   const invalid = receipt.inspections.filter((record) => !VERDICTS.includes(record.verdict) || typeof record.note !== 'string' || !record.note.trim());
   if (invalid.length) problems.push({ code: EXIT.rejected, line: `INVALID ATTESTATIONS: ${invalid.length} record(s) with an unknown verdict or empty note` });
