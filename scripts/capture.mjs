@@ -43,7 +43,7 @@ Structural checks:
 
 Browser:
   --chrome PATH                Browser executable (or CHROME_BIN); else Playwright's Chromium
-  --user-agent TEXT            Override User-Agent (or AGENT_VERIFICATION_USER_AGENT)
+  --user-agent TEXT            Override User-Agent (or AGENT_VERIFICATION_USER_AGENT); not recorded in the receipt
   --wait-until EVENT           load, domcontentloaded, or networkidle (default: networkidle)
   --wait-ms NUMBER             Settle time after load/click (default: 300)
   --timeout-ms NUMBER          Navigation/ready/image timeout (default: 60000)
@@ -84,6 +84,7 @@ function parseArgs(argv) {
     readySelector: '', screenshotMode: 'both', ariaSnapshot: true,
     chrome: process.env.CHROME_BIN || '',
     userAgent: process.env.AGENT_VERIFICATION_USER_AGENT || '',
+    userAgentOverride: Object.hasOwn(process.env, 'AGENT_VERIFICATION_USER_AGENT'),
     waitUntil: 'networkidle', waitMs: 300, timeoutMs: 60000,
     insecure: false, keepPaths: false, noSandbox: false, allowFile: false, spec: '',
   };
@@ -103,7 +104,7 @@ function parseArgs(argv) {
     else if (flag === '--ready-selector') config.readySelector = value;
     else if (flag === '--screenshot-mode') config.screenshotMode = value;
     else if (flag === '--chrome') config.chrome = value;
-    else if (flag === '--user-agent') config.userAgent = value;
+    else if (flag === '--user-agent') { config.userAgent = value; config.userAgentOverride = true; }
     else if (flag === '--wait-until') config.waitUntil = value;
     else if (flag === '--wait-ms') config.waitMs = Number(value);
     else if (flag === '--timeout-ms') config.timeoutMs = Number(value);
@@ -226,44 +227,76 @@ function parseKeyValues(argv, allowed) {
 function currentDigest(path) { try { return sha256(readFileSync(path)); } catch { return null; } }
 function artifactPath(receiptPath, path) { return isAbsolute(path) ? path : join(dirname(receiptPath), path); }
 function validNote(note) { return typeof note === 'string' && note.trim().length >= 10; }
+function canonicalCoverage(pair) {
+  const parts = String(pair).split(':');
+  if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) throw new UsageError(`malformed required coverage pair: ${String(pair).trim() || pair}`);
+  const viewportPart = parts[0].trim();
+  const pinned = viewportPart.match(/^(.+?)@([0-9]+)x([0-9]+)$/);
+  if (viewportPart.includes('@') && !pinned) throw new UsageError(`malformed required coverage pair: ${String(pair).trim() || pair}`);
+  if (pinned && (Number(pinned[2]) <= 0 || Number(pinned[3]) <= 0)) throw new UsageError(`malformed required coverage pair: ${String(pair).trim() || pair}`);
+  const label = pinned ? pinned[1].trim() : viewportPart;
+  const viewport = label === '*' ? '*' : slug(label);
+  const dimensions = pinned ? `@${pinned[2]}x${pinned[3]}` : '';
+  const statePart = parts[1].trim();
+  const state = statePart === '*' ? '*' : slug(statePart);
+  return `${viewport}${dimensions}:${state}`;
+}
+
+function isReceiptWriteError(error) {
+  return ['EACCES', 'EROFS', 'EPERM'].includes(error?.code)
+    || (error instanceof UsageError && error.message.startsWith('cannot write receipt'));
+}
+function receiptWriteError(receiptPath, error) {
+  return ['EACCES', 'EROFS', 'EPERM'].includes(error?.code)
+    ? new UsageError(`cannot write receipt ${receiptPath}: ${error.code}`)
+    : error;
+}
 
 function withReceiptLock(receiptPath, fn) {
-  const lockPath = `${receiptPath}.lock`;
-  const deadline = Date.now() + 10000;
-  let lockFd;
-  while (lockFd === undefined) {
-    try {
-      lockFd = openSync(lockPath, 'wx');
-    } catch (error) {
-      if (error.code !== 'EEXIST') throw error;
+  try {
+    const lockPath = `${receiptPath}.lock`;
+    const deadline = Date.now() + 10000;
+    let lockFd;
+    while (lockFd === undefined) {
       try {
-        if (Date.now() - statSync(lockPath).mtimeMs > 60000) {
-          unlinkSync(lockPath);
+        lockFd = openSync(lockPath, 'wx');
+      } catch (error) {
+        if (error.code !== 'EEXIST') throw error;
+        try {
+          if (Date.now() - statSync(lockPath).mtimeMs > 60000) {
+            unlinkSync(lockPath);
+            continue;
+          }
+        } catch (staleError) {
+          if (staleError.code !== 'ENOENT') throw staleError;
           continue;
         }
-      } catch (staleError) {
-        if (staleError.code !== 'ENOENT') throw staleError;
-        continue;
+        if (Date.now() >= deadline) throw new UsageError('receipt is locked by another attest; retry');
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
       }
-      if (Date.now() >= deadline) throw new UsageError('receipt is locked by another attest; retry');
-      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25);
     }
-  }
-  try {
-    return fn();
-  } finally {
-    closeSync(lockFd);
-    try { unlinkSync(lockPath); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    try {
+      return fn();
+    } finally {
+      closeSync(lockFd);
+      try { unlinkSync(lockPath); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
+  } catch (error) {
+    throw receiptWriteError(receiptPath, error);
   }
 }
 
 function writeReceiptAtomic(receiptPath, receipt) {
   const temporaryPath = `${receiptPath}.tmp-${process.pid}-${randomBytes(6).toString('hex')}`;
   try {
-    writeFileSync(temporaryPath, `${JSON.stringify(receipt, null, 2)}\n`);
-    renameSync(temporaryPath, receiptPath);
-  } finally {
-    try { unlinkSync(temporaryPath); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    try {
+      writeFileSync(temporaryPath, `${JSON.stringify(receipt, null, 2)}\n`);
+      renameSync(temporaryPath, receiptPath);
+    } finally {
+      try { unlinkSync(temporaryPath); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+    }
+  } catch (error) {
+    throw receiptWriteError(receiptPath, error);
   }
 }
 
@@ -283,6 +316,10 @@ function attest(argv) {
     if (!matches.length) throw new UsageError(`--path does not name a screenshot in this receipt: ${opts.path}`);
     if (matches.length > 1) throw new UsageError(`--path is ambiguous; use the full path: ${matches.map((entry) => entry.path).join(', ')}`);
     const matched = matches[0];
+    if (basename(opts.path) !== opts.path && resolve(opts.path) !== resolve(artifactPath(receiptPath, matched.path))) {
+      const suppliedDigest = currentDigest(resolve(opts.path));
+      if (suppliedDigest === null || suppliedDigest !== matched.sha256) throw new UsageError(`--path names a different file than the receipt artifact: ${opts.path}`);
+    }
     const digest = currentDigest(artifactPath(receiptPath, matched.path));
     if (digest === null) throw new UsageError(`screenshot is missing on disk: ${matched.path}`);
     if (digest !== matched.sha256) throw new UsageError(`screenshot bytes differ from the receipt (sha256 ${digest.slice(0, 12)} vs ${matched.sha256.slice(0, 12)}); rerun the capture`);
@@ -306,28 +343,25 @@ function check(argv) {
     if (flag !== '--require') throw new UsageError(`unknown option: ${flag}`);
     if (value === undefined || value.startsWith('--')) throw new UsageError('--require requires a value');
     for (const raw of value.split(',')) {
-      const pair = raw.trim();
-      const parts = pair.split(':');
-      if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) throw new UsageError(`malformed required coverage pair: ${pair || raw}`);
-      const viewportPart = parts[0].trim();
-      const pinned = viewportPart.match(/^(.+?)@([0-9]+)x([0-9]+)$/);
-      if (viewportPart.includes('@') && !pinned) throw new UsageError(`malformed required coverage pair: ${pair || raw}`);
-      if (pinned && (Number(pinned[2]) <= 0 || Number(pinned[3]) <= 0)) throw new UsageError(`malformed required coverage pair: ${pair || raw}`);
-      const canonical = `${viewportPart}:${parts[1].trim()}`;
+      const canonical = canonicalCoverage(raw.trim());
       if (!requiredCoverage.includes(canonical)) requiredCoverage.push(canonical);
     }
   }
   let receipt = readReceipt(receiptPath);
-  const storedCoverage = Array.isArray(receipt.required_coverage) ? receipt.required_coverage : [];
+  const storedCoverage = Array.isArray(receipt.required_coverage)
+    ? [...new Set(receipt.required_coverage.map(canonicalCoverage))] : [];
   const enforcedCoverage = [...storedCoverage];
   for (const requirement of requiredCoverage) {
     if (!enforcedCoverage.includes(requirement)) enforcedCoverage.push(requirement);
   }
-  if (enforcedCoverage.length > storedCoverage.length) {
+  const storedCoverageChanged = Array.isArray(receipt.required_coverage)
+    && JSON.stringify(receipt.required_coverage) !== JSON.stringify(storedCoverage);
+  if (enforcedCoverage.length > storedCoverage.length || storedCoverageChanged) {
     try {
       receipt = withReceiptLock(receiptPath, () => {
         const current = readReceipt(receiptPath);
-        const currentCoverage = Array.isArray(current.required_coverage) ? current.required_coverage : [];
+        const currentCoverage = Array.isArray(current.required_coverage)
+          ? [...new Set(current.required_coverage.map(canonicalCoverage))] : [];
         for (const requirement of requiredCoverage) {
           if (!currentCoverage.includes(requirement)) currentCoverage.push(requirement);
         }
@@ -337,7 +371,7 @@ function check(argv) {
       });
       enforcedCoverage.splice(0, enforcedCoverage.length, ...receipt.required_coverage);
     } catch (error) {
-      if (!['EACCES', 'EROFS', 'EPERM'].includes(error?.code)) throw error;
+      if (!isReceiptWriteError(error)) throw error;
       process.stderr.write(`warning: cannot record --require on a read-only receipt: ${receiptPath}\n`);
     }
   }
@@ -435,7 +469,9 @@ if (config.outDir) {
       try {
         const parsed = JSON.parse(readFileSync(join(config.outDir, 'receipt.json'), 'utf8'));
         priorReceipt = typeof parsed?.schema_version === 'number';
-        if (Array.isArray(parsed?.required_coverage) && parsed.required_coverage.every((entry) => typeof entry === 'string')) carriedRequiredCoverage = parsed.required_coverage;
+        if (Array.isArray(parsed?.required_coverage) && parsed.required_coverage.every((entry) => typeof entry === 'string')) {
+          carriedRequiredCoverage = [...new Set(parsed.required_coverage.map(canonicalCoverage))];
+        }
       } catch { /* not a reusable capture directory */ }
       if (!priorReceipt) throw new UsageError(`refusing to reuse non-empty --out-dir without a prior receipt.json: ${config.outDir}`);
       for (const name of names) {
@@ -464,7 +500,7 @@ const receipt = {
   config: {
     viewports: config.viewports, tabs: config.tabs, screenshot_mode: config.screenshotMode, aria_snapshot: config.ariaSnapshot,
     view_selector: config.viewSelector || null, content_selector: config.contentSelector, ready_selector: config.readySelector || null,
-    wait_until: config.waitUntil, wait_ms: config.waitMs, timeout_ms: config.timeoutMs, user_agent: config.userAgent || null,
+    wait_until: config.waitUntil, wait_ms: config.waitMs, timeout_ms: config.timeoutMs, user_agent_override: config.userAgentOverride,
     chrome: config.chrome || null, insecure: config.insecure, keep_paths: config.keepPaths, allow_file: config.allowFile,
   },
   screenshots: [],

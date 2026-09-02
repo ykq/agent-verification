@@ -236,7 +236,7 @@ for png in "$test_root/required"/*.png; do
 done
 run 0 check "$test_root/required/receipt.json" --require a:Overview,b:*
 run 3 check "$test_root/required/receipt.json" --require c:Overview
-grep -q 'MISSING COVERAGE: c:Overview' "$test_root/stderr" || fail "expected missing required coverage"
+grep -q 'MISSING COVERAGE: c:overview' "$test_root/stderr" || fail "expected missing required coverage"
 run 64 check "$test_root/required/receipt.json" --require nonsense
 receipt "$test_root/required/receipt.json" 'assert "required_coverage" in receipt, receipt'
 check "required coverage is recorded and gates omitted viewport/state evidence"
@@ -268,23 +268,23 @@ run 0 check "$test_root/req-slug/receipt.json" --require mob:details
 
 rm -rf "$test_root/req-missing-vp"; cp -r "$test_root/req" "$test_root/req-missing-vp"
 run 3 check "$test_root/req-missing-vp/receipt.json" --require tab:Overview
-grep -q 'MISSING COVERAGE: tab:Overview' "$test_root/stderr" || fail "missing viewport was not reported"
+grep -q 'MISSING COVERAGE: tab:overview' "$test_root/stderr" || fail "missing viewport was not reported"
 rm -rf "$test_root/req-missing-state"; cp -r "$test_root/req" "$test_root/req-missing-state"
 run 3 check "$test_root/req-missing-state/receipt.json" --require desk:Settings
-grep -q 'MISSING COVERAGE: desk:Settings' "$test_root/stderr" || fail "missing state was not reported"
+grep -q 'MISSING COVERAGE: desk:settings' "$test_root/stderr" || fail "missing state was not reported"
 rm -rf "$test_root/req-empty-wildcard"; cp -r "$test_root/req" "$test_root/req-empty-wildcard"
 run 3 check "$test_root/req-empty-wildcard/receipt.json" --require 'tab:*'
 grep -q 'MISSING COVERAGE: tab:*' "$test_root/stderr" || fail "empty wildcard was not reported"
 
 rm -rf "$test_root/req-mixed"; cp -r "$test_root/req" "$test_root/req-mixed"
 run 3 check "$test_root/req-mixed/receipt.json" --require desk:Overview,tab:Overview
-grep -q 'MISSING COVERAGE: tab:Overview' "$test_root/stderr" || fail "mixed missing pair was not reported"
-! grep 'MISSING COVERAGE:' "$test_root/stderr" | grep -q 'desk:Overview' || fail "present pair appeared on a MISSING line"
+grep -q 'MISSING COVERAGE: tab:overview' "$test_root/stderr" || fail "mixed missing pair was not reported"
+! grep 'MISSING COVERAGE:' "$test_root/stderr" | grep -q 'desk:overview' || fail "present pair appeared on a MISSING line"
 
 rm -rf "$test_root/req-repeat"; cp -r "$test_root/req" "$test_root/req-repeat"
 run 0 check "$test_root/req-repeat/receipt.json" --require desk:Overview --require mob:Overview
 run 0 check "$test_root/req-repeat/receipt.json" --require desk:Overview --require mob:Overview
-receipt "$test_root/req-repeat/receipt.json" 'assert receipt["required_coverage"] == ["desk:Overview", "mob:Overview"], receipt["required_coverage"]'
+receipt "$test_root/req-repeat/receipt.json" 'assert receipt["required_coverage"] == ["desk:overview", "mob:overview"], receipt["required_coverage"]'
 
 rm -rf "$test_root/req-vp-check"; cp -r "$test_root/req-vp" "$test_root/req-vp-check"
 run 0 check "$test_root/req-vp-check/receipt.json" --require '*:*'
@@ -316,10 +316,10 @@ rm -rf "$test_root/req-sticky"; cp -r "$test_root/req" "$test_root/req-sticky"
 run 0 check "$test_root/req-sticky/receipt.json" --require desk:Overview,mob:Overview
 run 0 check "$test_root/req-sticky/receipt.json"
 run 3 check "$test_root/req-sticky/receipt.json" --require tab:Overview
-grep -q 'MISSING COVERAGE: tab:Overview' "$test_root/stderr" || fail "new sticky requirement was not reported"
+grep -q 'MISSING COVERAGE: tab:overview' "$test_root/stderr" || fail "new sticky requirement was not reported"
 run 3 check "$test_root/req-sticky/receipt.json"
-grep -q 'MISSING COVERAGE: tab:Overview' "$test_root/stderr" || fail "stored requirement was not enforced"
-receipt "$test_root/req-sticky/receipt.json" 'assert receipt["required_coverage"] == ["desk:Overview", "mob:Overview", "tab:Overview"], receipt["required_coverage"]'
+grep -q 'MISSING COVERAGE: tab:overview' "$test_root/stderr" || fail "stored requirement was not enforced"
+receipt "$test_root/req-sticky/receipt.json" 'assert receipt["required_coverage"] == ["desk:overview", "mob:overview", "tab:overview"], receipt["required_coverage"]'
 check "coverage requirement combinations"
 
 # 18. Receipt artifact paths are portable across copied run directories.
@@ -401,9 +401,9 @@ for png in "$test_root/pinned-wrong"/*.png; do
   run 0 attest "$test_root/pinned-wrong/receipt.json" --path "$png" --verdict pass --by tester --note 'Pinned coverage screenshot inspected'
 done
 run 0 check "$test_root/pinned-wrong/receipt.json" --require 'mob:Overview'
-grep -q 'COVERAGE: mob:Overview -> mob@800x600' "$test_root/stdout" || fail "coverage satisfier was not printed"
+grep -q 'COVERAGE: mob:overview -> mob@800x600' "$test_root/stdout" || fail "coverage satisfier was not printed"
 run 3 check "$test_root/pinned-wrong/receipt.json" --require 'mob@390x844:Overview'
-grep -q 'MISSING COVERAGE: mob@390x844:Overview' "$test_root/stderr" || fail "pinned dimensions were not enforced"
+grep -q 'MISSING COVERAGE: mob@390x844:overview' "$test_root/stderr" || fail "pinned dimensions were not enforced"
 run 64 check "$test_root/pinned-wrong/receipt.json" --require 'mob@abc:Overview'
 run 64 check "$test_root/pinned-wrong/receipt.json" --require 'mob@0x10:Overview'
 
@@ -421,5 +421,42 @@ grep -q 'read-only receipt' "$test_root/stderr" || fail "read-only receipt warni
 ! grep -q '^    at ' "$test_root/stderr" || fail "read-only receipt emitted a stack trace"
 chmod u+w "$test_root/read-only-receipt"
 check "coverage survives reuse, pins dimensions, reports satisfiers, and tolerates read-only receipts"
+
+# 22. Attest binds directory-qualified paths to matching bytes, write failures are clean,
+# coverage is canonical, and User-Agent override text is never recorded.
+mkdir "$test_root/other"
+printf x > "$test_root/other/desk--overview--viewport.png"
+run 64 attest "$test_root/req/receipt.json" --path "$test_root/other/desk--overview--viewport.png" \
+  --verdict pass --note 'wrong file with same basename' --by tester
+grep -q 'different file' "$test_root/stderr" || fail "different same-basename file was accepted"
+mkdir "$test_root/other2"
+cp "$test_root/req/desk--overview--viewport.png" "$test_root/other2/desk--overview--viewport.png"
+run 0 attest "$test_root/req/receipt.json" --path "$test_root/other2/desk--overview--viewport.png" \
+  --verdict pass --note 'same bytes from another directory' --by tester
+
+cp -r "$test_root/req" "$test_root/ro"
+chmod 555 "$test_root/ro"
+run 64 attest "$test_root/ro/receipt.json" --path desk--overview--viewport.png \
+  --verdict pass --note 'read-only directory test' --by tester
+! grep -q '^    at ' "$test_root/stderr" || fail "read-only attest emitted a stack trace"
+grep -q 'cannot write receipt' "$test_root/stderr" || fail "read-only attest lacked clean write error"
+chmod 755 "$test_root/ro"
+
+cp -r "$test_root/req" "$test_root/canonical"
+run 0 check "$test_root/canonical/receipt.json" --require 'Desk:Overview'
+run 0 check "$test_root/canonical/receipt.json" --require 'DESK:OVERVIEW'
+run 0 check "$test_root/canonical/receipt.json" --require 'desk @800x600:overview'
+receipt "$test_root/canonical/receipt.json" 'assert receipt["required_coverage"] == ["desk:overview", "desk@800x600:overview"], receipt["required_coverage"]'
+
+unset AGENT_VERIFICATION_USER_AGENT
+run 0 "$fx/clean.html" --allow-file --viewports 'test=400x300' --screenshot-mode viewport \
+  --user-agent 'Probe/1.0 (someone@example.invalid)' --out-dir "$test_root/user-agent"
+receipt "$test_root/user-agent/receipt.json" '
+assert "someone@example.invalid" not in json.dumps(receipt)
+assert receipt["config"]["user_agent_override"] is True'
+run 0 "$fx/clean.html" --allow-file --viewports 'test=400x300' --screenshot-mode viewport \
+  --out-dir "$test_root/no-user-agent"
+receipt "$test_root/no-user-agent/receipt.json" 'assert receipt["config"]["user_agent_override"] is False'
+check "path identity, clean write errors, canonical coverage, and User-Agent privacy"
 
 echo "agent-verification: $pass checks passed"
